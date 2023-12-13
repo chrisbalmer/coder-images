@@ -17,3 +17,9 @@ jobs:
             docker build . --tag ghcr.io/chrisbalmer/coder-images-base:latest
             docker run ghcr.io/chrisbalmer/coder-images-base:latest
             docker push ghcr.io/chrisbalmer/coder-images-base:latest
+    - name: Build the golang image
+      run: |
+            cd ./images/golang
+            docker build . --tag ghcr.io/chrisbalmer/coder-images-golang:latest
+            docker run ghcr.io/chrisbalmer/coder-images-golang:latest
+            docker push ghcr.io/chrisbalmer/coder-images-golang:latest

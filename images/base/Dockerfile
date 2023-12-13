@@ -3,9 +3,9 @@ FROM ubuntu:22.04
 SHELL ["/bin/bash", "-c"]
 
 # Install the Docker apt repository
-RUN apt-get update && \
-    DEBIAN_FRONTEND="noninteractive" apt-get upgrade --yes && \
-    DEBIAN_FRONTEND="noninteractive" apt-get install --yes \
+RUN apt update && \
+    DEBIAN_FRONTEND="noninteractive" apt upgrade --yes && \
+    DEBIAN_FRONTEND="noninteractive" apt install --yes \
       bash \
       build-essential \
       ca-certificates \
@@ -23,7 +23,8 @@ RUN apt-get update && \
       rsync && \
     # Install latest Git using their official PPA
     add-apt-repository ppa:git-core/ppa && \
-    DEBIAN_FRONTEND="noninteractive" apt-get install --yes git
+    DEBIAN_FRONTEND="noninteractive" apt install --yes git && \
+    apt clean
 
 # Make typing unicode characters in the terminal work.
 ENV LANG en_US.UTF-8
