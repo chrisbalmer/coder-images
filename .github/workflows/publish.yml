@@ -13,6 +13,7 @@ jobs:
         password: ${{ secrets.GITHUB_TOKEN }}
     - name: Build the base image
       run: |
+            cd ./images/base
             docker build . --tag ghcr.io/chrisbalmer/coder-images-base:latest
             docker run ghcr.io/chrisbalmer/coder-images-base:latest
             docker push ghcr.io/chrisbalmer/coder-images-base:latest
