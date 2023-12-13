@@ -1,0 +1,1 @@
+demisto-sdk==1.24.0

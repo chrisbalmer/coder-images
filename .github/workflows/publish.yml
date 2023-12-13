@@ -23,3 +23,9 @@ jobs:
             docker build . --tag ghcr.io/chrisbalmer/coder-images-golang:latest
             docker run ghcr.io/chrisbalmer/coder-images-golang:latest
             docker push ghcr.io/chrisbalmer/coder-images-golang:latest
+    - name: Build the XSOAR image
+      run: |
+            cd ./images/xsoar
+            docker build . --tag ghcr.io/chrisbalmer/coder-images-xsoar:latest
+            docker run ghcr.io/chrisbalmer/coder-images-xsoar:latest
+            docker push ghcr.io/chrisbalmer/coder-images-xsoar:latest
