@@ -29,3 +29,9 @@ jobs:
             docker build . --tag ghcr.io/chrisbalmer/coder-images-xsoar:latest
             docker run ghcr.io/chrisbalmer/coder-images-xsoar:latest
             docker push ghcr.io/chrisbalmer/coder-images-xsoar:latest
+    - name: Build the terraform image
+      run: |
+            cd ./images/terraform
+            docker build . --tag ghcr.io/chrisbalmer/coder-images-terraform:latest
+            docker run ghcr.io/chrisbalmer/coder-images-terraform:latest
+            docker push ghcr.io/chrisbalmer/coder-images-terraform:latest
