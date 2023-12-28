@@ -14,24 +14,24 @@ jobs:
     - name: Build the base image
       run: |
             cd ./images/base
-            docker build . --tag ghcr.io/chrisbalmer/coder-images-base:latest
-            docker run ghcr.io/chrisbalmer/coder-images-base:latest
-            docker push ghcr.io/chrisbalmer/coder-images-base:latest
+            docker build . --tag ghcr.io/chrisbalmer/coder-images-base:0.0.1
+            docker run ghcr.io/chrisbalmer/coder-images-base:0.0.1
+            docker push ghcr.io/chrisbalmer/coder-images-base:0.0.1
     - name: Build the golang image
       run: |
             cd ./images/golang
-            docker build . --tag ghcr.io/chrisbalmer/coder-images-golang:latest
-            docker run ghcr.io/chrisbalmer/coder-images-golang:latest
-            docker push ghcr.io/chrisbalmer/coder-images-golang:latest
+            docker build . --tag ghcr.io/chrisbalmer/coder-images-golang:0.0.1
+            docker run ghcr.io/chrisbalmer/coder-images-golang:0.0.1
+            docker push ghcr.io/chrisbalmer/coder-images-golang:0.0.1
     - name: Build the XSOAR image
       run: |
             cd ./images/xsoar
-            docker build . --tag ghcr.io/chrisbalmer/coder-images-xsoar:latest
-            docker run ghcr.io/chrisbalmer/coder-images-xsoar:latest
-            docker push ghcr.io/chrisbalmer/coder-images-xsoar:latest
+            docker build . --tag ghcr.io/chrisbalmer/coder-images-xsoar:0.0.1
+            docker run ghcr.io/chrisbalmer/coder-images-xsoar:0.0.1
+            docker push ghcr.io/chrisbalmer/coder-images-xsoar:0.0.1
     - name: Build the terraform image
       run: |
             cd ./images/terraform
-            docker build . --tag ghcr.io/chrisbalmer/coder-images-terraform:latest
-            docker run ghcr.io/chrisbalmer/coder-images-terraform:latest
-            docker push ghcr.io/chrisbalmer/coder-images-terraform:latest
+            docker build . --tag ghcr.io/chrisbalmer/coder-images-terraform:0.0.1
+            docker run ghcr.io/chrisbalmer/coder-images-terraform:0.0.1
+            docker push ghcr.io/chrisbalmer/coder-images-terraform:0.0.1
