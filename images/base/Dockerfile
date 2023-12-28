@@ -20,6 +20,7 @@ RUN apt update && \
       unzip \
       vim \
       wget \
+      iputils-ping \
       rsync && \
     # Install latest Git using their official PPA
     add-apt-repository ppa:git-core/ppa && \

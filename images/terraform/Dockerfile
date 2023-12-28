@@ -3,7 +3,7 @@ FROM ghcr.io/chrisbalmer/coder-images-base:latest
 # Run everything as root
 USER root
 
-# Install terraform
+# Install terraform and terragrunt
 RUN wget -O- https://apt.releases.hashicorp.com/gpg | \
     gpg --dearmor | \
     sudo tee /usr/share/keyrings/hashicorp-archive-keyring.gpg && \
@@ -13,7 +13,10 @@ RUN wget -O- https://apt.releases.hashicorp.com/gpg | \
     apt update && \
     DEBIAN_FRONTEND="noninteractive" apt upgrade --yes && \
     DEBIAN_FRONTEND="noninteractive" apt install --yes \
-    terraform
+    terraform && \
+    cd /tmp/ && \
+    curl -LO https://github.com/gruntwork-io/terragrunt/releases/download/v0.54.12/terragrunt_linux_amd64 && \
+    mv terragrunt_linux_amd64 /usr/local/bin/terragrunt
 
 # Install ansible
 COPY requirements.txt /tmp/
