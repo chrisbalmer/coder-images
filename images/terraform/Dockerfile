@@ -16,7 +16,8 @@ RUN wget -O- https://apt.releases.hashicorp.com/gpg | \
     terraform && \
     cd /tmp/ && \
     curl -LO https://github.com/gruntwork-io/terragrunt/releases/download/v0.54.12/terragrunt_linux_amd64 && \
-    mv terragrunt_linux_amd64 /usr/local/bin/terragrunt
+    mv terragrunt_linux_amd64 /usr/local/bin/terragrunt && \
+    chmod +x /usr/local/bin/terragrunt
 
 # Install ansible
 COPY requirements.txt /tmp/
