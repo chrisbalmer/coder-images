@@ -21,7 +21,8 @@ RUN apt update && \
       vim \
       wget \
       iputils-ping \
-      rsync && \
+      rsync \
+      dnsutils && \
     # Install latest Git using their official PPA
     add-apt-repository ppa:git-core/ppa && \
     DEBIAN_FRONTEND="noninteractive" apt install --yes git && \
