@@ -1,4 +1,4 @@
-FROM ubuntu:22.04
+FROM ubuntu:24.04
 
 SHELL ["/bin/bash", "-c"]
 
@@ -22,7 +22,8 @@ RUN apt update && \
       wget \
       iputils-ping \
       rsync \
-      dnsutils && \
+      dnsutils \
+      jq && \
     # Install latest Git using their official PPA
     add-apt-repository ppa:git-core/ppa && \
     DEBIAN_FRONTEND="noninteractive" apt install --yes git && \
