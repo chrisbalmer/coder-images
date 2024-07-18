@@ -5,10 +5,10 @@ USER root
 
 # Install go
 COPY files.256 /tmp/
-RUN curl -LO "https://go.dev/dl/go1.21.5.linux-amd64.tar.gz" && \
+RUN curl -LO "https://go.dev/dl/go1.22.5.linux-amd64.tar.gz" && \
     sha256sum --check /tmp/files.256 && \
-    tar -C /usr/local -xzvf go1.21.5.linux-amd64.tar.gz && \
-    rm go1.21.5.linux-amd64.tar.gz
+    tar -C /usr/local -xzvf go1.22.5.linux-amd64.tar.gz && \
+    rm go1.22.5.linux-amd64.tar.gz
 
 # Setup go env vars
 ENV GOROOT /usr/local/go
