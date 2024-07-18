@@ -22,4 +22,4 @@ ENV PATH $PATH:$GOBIN
 USER coder
 RUN mkdir -p /home/coder/go/bin && \
     go install -v golang.org/x/tools/cmd/goimports@latest && \
-    go install -v golang.org/x/tools/gopls@latest"
+    go install -v golang.org/x/tools/gopls@latest
