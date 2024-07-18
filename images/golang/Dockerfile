@@ -8,8 +8,7 @@ COPY files.256 /tmp/
 RUN curl -LO "https://go.dev/dl/go1.21.5.linux-amd64.tar.gz" && \
     sha256sum --check /tmp/files.256 && \
     tar -C /usr/local -xzvf go1.21.5.linux-amd64.tar.gz && \
-    rm go1.21.5.linux-amd64.tar.gz && \
-    mkdir -p /home/coder/go/bin
+    rm go1.21.5.linux-amd64.tar.gz
 
 # Setup go env vars
 ENV GOROOT /usr/local/go
@@ -21,3 +20,6 @@ ENV PATH $PATH:$GOBIN
 
 # Set back to coder user
 USER coder
+RUN mkdir -p /home/coder/go/bin && \
+    go install -v golang.org/x/tools/cmd/goimports@latest && \
+    go install -v golang.org/x/tools/gopls@latest"
