@@ -55,7 +55,7 @@ ENV LC_ALL en_US.UTF-8
 # Add a user `coder` so that you're not developing as the `root` user
 RUN useradd coder \
       --create-home \
-      --shell=/bin/bash \
+      --shell=/usr/bin/bash \
       --uid=1000 \
       --user-group && \
     echo "coder ALL=(ALL) NOPASSWD:ALL" >>/etc/sudoers.d/nopasswd
