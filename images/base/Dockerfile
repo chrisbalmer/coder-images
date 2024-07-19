@@ -35,7 +35,7 @@ RUN apt update && \
     # Download fonts and starship then check hashes
     curl -LO https://github.com/ryanoasis/nerd-fonts/releases/download/v3.2.1/SourceCodePro.zip && \
     curl -LO https://github.com/starship/starship/releases/download/v1.19.0/starship-x86_64-unknown-linux-musl.tar.gz && \
-    sha256sum --check /tmp/files.256
+    sha256sum --check /tmp/files.256 && \
     # Install fonts
     unzip ./SourceCodePro.zip -d /usr/share/fonts && \
     fc-cache -v && \
