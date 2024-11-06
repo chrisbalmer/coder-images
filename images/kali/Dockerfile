@@ -14,7 +14,7 @@ RUN apt-get clean
 
 ARG KALI_DESKTOP=xfce
 RUN apt-get -y install kali-desktop-${KALI_DESKTOP}
-RUN apt-get -y install tightvncserver dbus dbus-x11 novnc net-tools
+RUN apt-get -y install tightvncserver dbus dbus-x11 novnc net-tools zsh
 
 ENV USER root
 
