@@ -37,7 +37,7 @@ jobs:
             docker push ghcr.io/chrisbalmer/coder-images-terraform:1.1.2
     - name: Build the kali image
       run: |
-            cd ./images/kali
-            docker build . --tag ghcr.io/chrisbalmer/coder-images-kali:1.1.2
-            docker run ghcr.io/chrisbalmer/coder-images-kali:1.1.2
-            docker push ghcr.io/chrisbalmer/coder-images-kali:1.1.2
+            cd ./images/kali-desktop
+            docker build . --tag ghcr.io/chrisbalmer/coder-images-kali-desktop:1.1.2
+            docker run ghcr.io/chrisbalmer/coder-images-kali-desktop:1.1.2
+            docker push ghcr.io/chrisbalmer/coder-images-kali-desktop:1.1.2
