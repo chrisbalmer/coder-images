@@ -6,7 +6,7 @@ USER root
 RUN apt update && \
     DEBIAN_FRONTEND="noninteractive" apt upgrade --yes && \
     DEBIAN_FRONTEND="noninteractive" apt install --yes \
-      ubuntu-unity-desktop
+      ubuntu-unity-desktop libdatetime-perl
 
 # Set back to coder user
 USER coder
