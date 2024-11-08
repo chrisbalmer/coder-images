@@ -1,4 +1,4 @@
-FROM ghcr.io/chrisbalmer/coder-images-base:1.1.1
+FROM ghcr.io/chrisbalmer/coder-images-base:1.1.3
 
 # Run everything as root
 USER root
