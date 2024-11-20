@@ -4,7 +4,7 @@ FROM ghcr.io/chrisbalmer/coder-images-base:1.1.4
 USER root
 
 # Install go
-COPY /src/files.256 /tmp/
+COPY /src/files.sha256 /tmp/
 RUN curl -LO "https://go.dev/dl/go1.23.3.linux-amd64.tar.gz" && \
     sha256sum --ignore-missing --check /tmp/files.256 && \
     tar -C /usr/local -xzvf go1.22.5.linux-amd64.tar.gz && \
