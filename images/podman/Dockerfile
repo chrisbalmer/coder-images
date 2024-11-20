@@ -59,9 +59,11 @@ RUN dnf install -y git \
     rm starship-x86_64-unknown-linux-musl.tar.gz
 
 # Add a user `coder` so that you're not developing as the `root` user
-RUN useradd coder \
+RUN userdel podman && \
+    useradd coder \
       --create-home \
       --shell=/usr/bin/zsh \
+      --uid=1000 \
       --user-group && \
     echo "coder ALL=(ALL) NOPASSWD:ALL" >>/etc/sudoers.d/nopasswd
 
