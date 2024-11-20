@@ -1,14 +1,19 @@
-FROM ghcr.io/chrisbalmer/coder-images-base:1.1.3
+FROM ghcr.io/chrisbalmer/coder-images-base:1.1.4
 
 # Run everything as root
 USER root
 
 # Install go
-COPY files.256 /tmp/
-RUN curl -LO "https://go.dev/dl/go1.22.5.linux-amd64.tar.gz" && \
+COPY /src/files.256 /tmp/
+RUN curl -LO "https://go.dev/dl/go1.23.3.linux-amd64.tar.gz" && \
     sha256sum --check /tmp/files.256 && \
     tar -C /usr/local -xzvf go1.22.5.linux-amd64.tar.gz && \
     rm go1.22.5.linux-amd64.tar.gz
+
+RUN apt update && \
+    apt install -y \
+      mysql-client postgresql-client && \
+    apt clean
 
 # Setup go env vars
 ENV GOROOT /usr/local/go

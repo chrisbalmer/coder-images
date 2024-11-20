@@ -1,4 +1,4 @@
-FROM ghcr.io/chrisbalmer/coder-images-base:1.1.3
+FROM ghcr.io/chrisbalmer/coder-images-base:1.1.4
 
 # Run everything as root
 USER root
@@ -20,7 +20,7 @@ RUN wget -O- https://apt.releases.hashicorp.com/gpg | \
     chmod +x /usr/local/bin/terragrunt
 
 # Install ansible
-COPY requirements.txt /tmp/
+COPY /src/terraform-requirements.txt /tmp/requirements.txt
 RUN pip3 install --upgrade pip && \
     pip3 install -r /tmp/requirements.txt
 
