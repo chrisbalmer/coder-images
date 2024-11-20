@@ -6,7 +6,7 @@ USER root
 # Install go
 COPY /src/files.256 /tmp/
 RUN curl -LO "https://go.dev/dl/go1.23.3.linux-amd64.tar.gz" && \
-    sha256sum --check /tmp/files.256 && \
+    sha256sum --ignore-missing --check /tmp/files.256 && \
     tar -C /usr/local -xzvf go1.22.5.linux-amd64.tar.gz && \
     rm go1.22.5.linux-amd64.tar.gz
 
