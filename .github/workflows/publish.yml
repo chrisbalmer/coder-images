@@ -33,7 +33,7 @@ jobs:
             docker push ghcr.io/chrisbalmer/coder-images-terraform:1.1.4
     - name: Build the podman image
       run: |
-            docker build -f ./images/podman/Dockerfile . --tag ghcr.io/chrisbalmer/coder-images-podman:1.0.0
+            docker build -f ./images/podman/Dockerfile . --tag ghcr.io/chrisbalmer/coder-images-podman:1.0.1
             docker run ghcr.io/chrisbalmer/coder-images-podman:1.0.1
             docker push ghcr.io/chrisbalmer/coder-images-podman:1.0.1
     - name: Build the kali desktop image
