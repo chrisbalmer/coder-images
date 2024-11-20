@@ -34,8 +34,8 @@ jobs:
     - name: Build the podman image
       run: |
             docker build -f ./images/podman/Dockerfile . --tag ghcr.io/chrisbalmer/coder-images-podman:1.0.0
-            docker run ghcr.io/chrisbalmer/coder-images-podman:1.0.0
-            docker push ghcr.io/chrisbalmer/coder-images-podman:1.0.0
+            docker run ghcr.io/chrisbalmer/coder-images-podman:1.0.1
+            docker push ghcr.io/chrisbalmer/coder-images-podman:1.0.1
     - name: Build the kali desktop image
       run: |
             docker build -f ./images/kali-desktop/Dockerfile . --tag ghcr.io/chrisbalmer/coder-images-kali-desktop:1.1.4
