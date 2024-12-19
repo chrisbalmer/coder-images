@@ -1,12 +1,13 @@
-FROM ghcr.io/chrisbalmer/coder-images-base:1.1.4
+FROM ghcr.io/chrisbalmer/coder-images-base:1.1.5
 
 # Run everything as root
 USER root
 
 RUN apt update && \
-    DEBIAN_FRONTEND="noninteractive" apt upgrade --yes && \
-    DEBIAN_FRONTEND="noninteractive" apt install --yes \
-      ubuntu-unity-desktop xfce4 libdatetime-perl  dbus-x11
+    apt upgrade --yes && \
+    apt install --yes \
+      ubuntu-unity-desktop xfce4 libdatetime-perl dbus-x11 && \
+    apt clean
 
 # Set back to coder user
 USER coder

@@ -3,35 +3,67 @@ FROM ubuntu:22.04
 SHELL ["/bin/bash", "-c"]
 
 COPY /src/files.sha256 /tmp/
-# Install the Docker apt repository
+ENV DEBIAN_FRONTEND noninteractive
+
+    # Install required tools
 RUN apt update && \
-    DEBIAN_FRONTEND="noninteractive" apt upgrade --yes && \
-    DEBIAN_FRONTEND="noninteractive" apt install --yes \
+    apt install -y curl gpg lsb-release software-properties-common && \
+    apt clean
+
+    # Add 1Password Repo
+RUN curl -sS https://downloads.1password.com/linux/keys/1password.asc | \
+    gpg --dearmor --output /usr/share/keyrings/1password-archive-keyring.gpg && \
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/1password-archive-keyring.gpg] https://downloads.1password.com/linux/debian/$(dpkg --print-architecture) stable main" | \
+    tee /etc/apt/sources.list.d/1password.list && \
+    mkdir -p /etc/debsig/policies/AC2D62742012EA22/ && \
+    curl -sS https://downloads.1password.com/linux/debian/debsig/1password.pol | \
+    tee /etc/debsig/policies/AC2D62742012EA22/1password.pol && \
+    mkdir -p /usr/share/debsig/keyrings/AC2D62742012EA22 && \
+    curl -sS https://downloads.1password.com/linux/keys/1password.asc | \
+    gpg --dearmor --output /usr/share/debsig/keyrings/AC2D62742012EA22/debsig.gpg && \
+    # Add Microsoft repo
+    curl -sLS https://packages.microsoft.com/keys/microsoft.asc | \
+    gpg --dearmor | tee /etc/apt/keyrings/microsoft.gpg > /dev/null && \
+    chmod go+r /etc/apt/keyrings/microsoft.gpg && \
+    AZ_DIST=$(lsb_release -cs) && \
+    echo "Types: deb" > /etc/apt/sources.list.d/azure-cli.sources && \
+    echo "URIs: https://packages.microsoft.com/repos/azure-cli/" >> /etc/apt/sources.list.d/azure-cli.sources && \
+    echo "Suites: ${AZ_DIST}" >> /etc/apt/sources.list.d/azure-cli.sources && \
+    echo "Components: main" >> /etc/apt/sources.list.d/azure-cli.sources && \
+    echo "Architectures: $(dpkg --print-architecture)" >> /etc/apt/sources.list.d/azure-cli.sources && \
+    echo "Signed-by: /etc/apt/keyrings/microsoft.gpg" >> /etc/apt/sources.list.d/azure-cli.sources && \
+    # Add Git repo
+    add-apt-repository ppa:git-core/ppa
+
+    # Install apps
+RUN apt update && \
+    apt upgrade --yes && \
+    apt install --yes \
+      1password-cli \
+      azure-cli \
       bash \
       build-essential \
       ca-certificates \
-      curl \
+      dnsutils \
+      fontconfig \
+      git \
       htop \
+      iputils-ping \
+      jq \
       locales \
       man \
       python3 \
       python3-pip \
-      software-properties-common \
+      rsync \
       sudo \
       unzip \
       vim \
       wget \
-      iputils-ping \
-      rsync \
-      dnsutils \
-      jq \
-      fontconfig \
       zsh && \
-    # Install latest Git using their official PPA
-    add-apt-repository ppa:git-core/ppa && \
-    DEBIAN_FRONTEND="noninteractive" apt install --yes git && \
-    apt clean && \
-    sed -i 's/\/bin\/bash/\/usr\/bin\/zsh/g' /etc/passwd && \
+    apt clean
+
+    # Change bash shells to zsh
+RUN sed -i 's/\/bin\/bash/\/usr\/bin\/zsh/g' /etc/passwd && \
     # Download fonts and starship then check hashes
     curl -LO https://github.com/ryanoasis/nerd-fonts/releases/download/v3.2.1/SourceCodePro.zip && \
     curl -LO https://github.com/starship/starship/releases/download/v1.19.0/starship-x86_64-unknown-linux-musl.tar.gz && \

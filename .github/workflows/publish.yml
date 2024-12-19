@@ -13,36 +13,36 @@ jobs:
         password: ${{ secrets.GITHUB_TOKEN }}
     - name: Build the base image
       run: |
-            docker build -f ./images/base/Dockerfile . --tag ghcr.io/chrisbalmer/coder-images-base:1.1.4
-            docker run ghcr.io/chrisbalmer/coder-images-base:1.1.4
-            docker push ghcr.io/chrisbalmer/coder-images-base:1.1.4
+            docker build -f ./images/base/Dockerfile . --tag ghcr.io/chrisbalmer/coder-images-base:1.1.5
+            docker run ghcr.io/chrisbalmer/coder-images-base:1.1.5
+            docker push ghcr.io/chrisbalmer/coder-images-base:1.1.5
     - name: Build the golang image
       run: |
-            docker build -f ./images/golang/Dockerfile . --tag ghcr.io/chrisbalmer/coder-images-golang:1.1.4
-            docker run ghcr.io/chrisbalmer/coder-images-golang:1.1.4
-            docker push ghcr.io/chrisbalmer/coder-images-golang:1.1.4
+            docker build -f ./images/golang/Dockerfile . --tag ghcr.io/chrisbalmer/coder-images-golang:1.1.5
+            docker run ghcr.io/chrisbalmer/coder-images-golang:1.1.5
+            docker push ghcr.io/chrisbalmer/coder-images-golang:1.1.5
     - name: Build the XSOAR image
       run: |
-            docker build -f ./images/xsoar/Dockerfile . --tag ghcr.io/chrisbalmer/coder-images-xsoar:1.1.4
-            docker run ghcr.io/chrisbalmer/coder-images-xsoar:1.1.4
-            docker push ghcr.io/chrisbalmer/coder-images-xsoar:1.1.4
+            docker build -f ./images/xsoar/Dockerfile . --tag ghcr.io/chrisbalmer/coder-images-xsoar:1.1.5
+            docker run ghcr.io/chrisbalmer/coder-images-xsoar:1.1.5
+            docker push ghcr.io/chrisbalmer/coder-images-xsoar:1.1.5
     - name: Build the terraform image
       run: |
-            docker build -f ./images/terraform/Dockerfile . --tag ghcr.io/chrisbalmer/coder-images-terraform:1.1.4
-            docker run ghcr.io/chrisbalmer/coder-images-terraform:1.1.4
-            docker push ghcr.io/chrisbalmer/coder-images-terraform:1.1.4
+            docker build -f ./images/terraform/Dockerfile . --tag ghcr.io/chrisbalmer/coder-images-terraform:1.1.5
+            docker run ghcr.io/chrisbalmer/coder-images-terraform:1.1.5
+            docker push ghcr.io/chrisbalmer/coder-images-terraform:1.1.5
     - name: Build the podman image
       run: |
-            docker build -f ./images/podman/Dockerfile . --tag ghcr.io/chrisbalmer/coder-images-podman:1.0.1
-            docker run ghcr.io/chrisbalmer/coder-images-podman:1.0.1
-            docker push ghcr.io/chrisbalmer/coder-images-podman:1.0.1
+            docker build -f ./images/podman/Dockerfile . --tag ghcr.io/chrisbalmer/coder-images-podman:1.0.2
+            docker run ghcr.io/chrisbalmer/coder-images-podman:1.0.2
+            docker push ghcr.io/chrisbalmer/coder-images-podman:1.0.2
     - name: Build the kali desktop image
       run: |
-            docker build -f ./images/kali-desktop/Dockerfile . --tag ghcr.io/chrisbalmer/coder-images-kali-desktop:1.1.4
-            docker run ghcr.io/chrisbalmer/coder-images-kali-desktop:1.1.4
-            docker push ghcr.io/chrisbalmer/coder-images-kali-desktop:1.1.4
+            docker build -f ./images/kali-desktop/Dockerfile . --tag ghcr.io/chrisbalmer/coder-images-kali-desktop:1.1.5
+            docker run ghcr.io/chrisbalmer/coder-images-kali-desktop:1.1.5
+            docker push ghcr.io/chrisbalmer/coder-images-kali-desktop:1.1.5
     - name: Build the ubuntu desktop image
       run: |
-            docker build -f ./images/ubuntu-desktop/Dockerfile . --tag ghcr.io/chrisbalmer/coder-images-ubuntu-desktop:1.1.8
-            docker run ghcr.io/chrisbalmer/coder-images-ubuntu-desktop:1.1.8
-            docker push ghcr.io/chrisbalmer/coder-images-ubuntu-desktop:1.1.8
+            docker build -f ./images/ubuntu-desktop/Dockerfile . --tag ghcr.io/chrisbalmer/coder-images-ubuntu-desktop:1.1.9
+            docker run ghcr.io/chrisbalmer/coder-images-ubuntu-desktop:1.1.9
+            docker push ghcr.io/chrisbalmer/coder-images-ubuntu-desktop:1.1.9

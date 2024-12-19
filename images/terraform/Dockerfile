@@ -1,21 +1,26 @@
-FROM ghcr.io/chrisbalmer/coder-images-base:1.1.4
+FROM ghcr.io/chrisbalmer/coder-images-base:1.1.5
 
 # Run everything as root
 USER root
 
-# Install terraform and terragrunt
+COPY /src/files.sha256 /tmp/
+
+# Add hashicorp repo
 RUN wget -O- https://apt.releases.hashicorp.com/gpg | \
     gpg --dearmor | \
-    sudo tee /usr/share/keyrings/hashicorp-archive-keyring.gpg && \
+    tee /usr/share/keyrings/hashicorp-archive-keyring.gpg && \
     echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] \
     https://apt.releases.hashicorp.com $(lsb_release -cs) main" | \
-    sudo tee /etc/apt/sources.list.d/hashicorp.list && \
-    apt update && \
-    DEBIAN_FRONTEND="noninteractive" apt upgrade --yes && \
-    DEBIAN_FRONTEND="noninteractive" apt install --yes \
-    terraform && \
+    tee /etc/apt/sources.list.d/hashicorp.list
+
+# Install terraform and terragrunt
+RUN apt update && \
+    apt upgrade --yes && \
+    apt install --yes \
+      terraform && \
     cd /tmp/ && \
-    curl -LO https://github.com/gruntwork-io/terragrunt/releases/download/v0.54.12/terragrunt_linux_amd64 && \
+    curl -LO https://github.com/gruntwork-io/terragrunt/releases/download/v0.70.4/terragrunt_linux_amd64 && \
+    sha256sum --ignore-missing --check /tmp/files.sha256 && \
     mv terragrunt_linux_amd64 /usr/local/bin/terragrunt && \
     chmod +x /usr/local/bin/terragrunt
 
