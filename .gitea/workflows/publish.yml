@@ -186,13 +186,14 @@ jobs:
       - name: Determine base image reference
         id: base-ref
         run: |
+          BASE=${{ needs.detect-platform.outputs.image-prefix }}-base
           if [[ -n "${{ needs.build-base.outputs.digest }}" ]]; then
-            echo "reference=${{ needs.build-base.outputs.digest }}" >> $GITHUB_OUTPUT
-            echo "Using base digest: ${{ needs.build-base.outputs.digest }}"
+            # Use @ for digest references, not :
+            echo "reference=${BASE}@${{ needs.build-base.outputs.digest }}" >> $GITHUB_OUTPUT
+            echo "Using base digest: ${BASE}@${{ needs.build-base.outputs.digest }}"
           else
-            # Fallback to latest
-            echo "reference=latest" >> $GITHUB_OUTPUT
-            echo "Using base tag: latest"
+            echo "reference=${BASE}:latest" >> $GITHUB_OUTPUT
+            echo "Using base tag: ${BASE}:latest"
           fi
 
       - name: Set up QEMU
@@ -237,9 +238,7 @@ jobs:
           cache-to: type=registry,ref=${{ needs.detect-platform.outputs.image-prefix }}-${{ matrix.image }}:buildcache,mode=max
           provenance: false
           build-args: |
-            REGISTRY=${{ needs.detect-platform.outputs.registry }}
-            IMAGE_OWNER=${{ gitea.repository_owner || github.repository_owner }}
-            BASE_TAG=${{ steps.base-ref.outputs.reference }}
+            BASE_IMAGE=${{ steps.base-ref.outputs.reference }}
 
       - name: Output image info
         run: |

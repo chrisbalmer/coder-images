@@ -1,7 +1,5 @@
-ARG REGISTRY=ghcr.io
-ARG IMAGE_OWNER=chrisbalmer
-ARG BASE_TAG=latest
-FROM ${REGISTRY}/${IMAGE_OWNER}/coder-images-base:${BASE_TAG}
+ARG BASE_IMAGE=ghcr.io/chrisbalmer/coder-images-base:latest
+FROM ${BASE_IMAGE}
 
 # Run everything as root
 USER root

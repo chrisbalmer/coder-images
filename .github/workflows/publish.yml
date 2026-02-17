@@ -163,29 +163,14 @@ jobs:
       - name: Determine base image reference
         id: base-ref
         run: |
-          # Use digest if available (most reliable), otherwise fall back to tag
+          BASE=${{ env.IMAGE_PREFIX }}-base
           if [[ -n "${{ needs.build-base.outputs.digest }}" ]]; then
-            # Use digest for guaranteed immutability
-            echo "reference=${{ needs.build-base.outputs.digest }}" >> $GITHUB_OUTPUT
-            echo "Using base image by digest: ${{ needs.build-base.outputs.digest }}"
+            # Use @ for digest references, not :
+            echo "reference=${BASE}@${{ needs.build-base.outputs.digest }}" >> $GITHUB_OUTPUT
+            echo "Using base digest: ${BASE}@${{ needs.build-base.outputs.digest }}"
           else
-            # Fallback to tag (for PRs or if digest unavailable)
-            if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
-              echo "reference=latest" >> $GITHUB_OUTPUT
-              echo "Using base image tag: latest"
-            elif [[ "${{ github.ref }}" == refs/tags/* ]]; then
-              TAG="${GITHUB_REF#refs/tags/}"
-              TAG="${TAG#v}"
-              echo "reference=${TAG}" >> $GITHUB_OUTPUT
-              echo "Using base image tag: ${TAG}"
-            elif [[ "${{ github.ref }}" == refs/pull/* ]]; then
-              echo "reference=pr-${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
-              echo "Using base image tag: pr-${{ github.event.pull_request.number }}"
-            else
-              BRANCH="${GITHUB_REF#refs/heads/}"
-              echo "reference=${BRANCH}" >> $GITHUB_OUTPUT
-              echo "Using base image tag: ${BRANCH}"
-            fi
+            echo "reference=${BASE}:latest" >> $GITHUB_OUTPUT
+            echo "Using base tag: ${BASE}:latest"
           fi
 
       - name: Set up QEMU
@@ -240,9 +225,7 @@ jobs:
           cache-to: type=registry,ref=${{ env.IMAGE_PREFIX }}-${{ matrix.image }}:buildcache,mode=max
           provenance: false
           build-args: |
-            REGISTRY=${{ env.REGISTRY }}
-            IMAGE_OWNER=${{ github.repository_owner }}
-            BASE_TAG=${{ steps.base-ref.outputs.reference }}
+            BASE_IMAGE=${{ steps.base-ref.outputs.reference }}
 
       - name: Output image info
         run: |
