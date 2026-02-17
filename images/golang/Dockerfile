@@ -1,4 +1,7 @@
-FROM ghcr.io/chrisbalmer/coder-images-base:1.1.5
+ARG REGISTRY=ghcr.io
+ARG IMAGE_OWNER=chrisbalmer
+ARG BASE_TAG=latest
+FROM ${REGISTRY}/${IMAGE_OWNER}/coder-images-base:${BASE_TAG}
 
 # Run everything as root
 USER root

@@ -1,1 +1,8 @@
-demisto-sdk==1.33.0
+demisto-sdk==1.38.11
+pytest
+pytest-env
+requests
+requests_mock
+freezegun
+pytz
+tzdata

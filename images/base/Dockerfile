@@ -1,16 +1,24 @@
-FROM ubuntu:22.04
+FROM ubuntu:24.04
 
 SHELL ["/bin/bash", "-c"]
 
 COPY /src/files.sha256 /tmp/
-ENV DEBIAN_FRONTEND noninteractive
+ENV DEBIAN_FRONTEND=noninteractive
 
-    # Install required tools
+# Add a user `coder` so that you're not developing as the `root` user
+RUN useradd coder \
+      --create-home \
+      --shell=/usr/bin/zsh \
+      --uid=1000 \
+      --user-group && \
+    echo "coder ALL=(ALL) NOPASSWD:ALL" >>/etc/sudoers.d/nopasswd
+
+# Install required tools
 RUN apt update && \
     apt install -y curl gpg lsb-release software-properties-common && \
     apt clean
 
-    # Add 1Password Repo
+# Add 1Password Repo
 RUN curl -sS https://downloads.1password.com/linux/keys/1password.asc | \
     gpg --dearmor --output /usr/share/keyrings/1password-archive-keyring.gpg && \
     echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/1password-archive-keyring.gpg] https://downloads.1password.com/linux/debian/$(dpkg --print-architecture) stable main" | \
@@ -35,7 +43,7 @@ RUN curl -sS https://downloads.1password.com/linux/keys/1password.asc | \
     # Add Git repo
     add-apt-repository ppa:git-core/ppa
 
-    # Install apps
+# Install apps
 RUN apt update && \
     apt upgrade --yes && \
     apt install --yes \
@@ -62,7 +70,7 @@ RUN apt update && \
       zsh && \
     apt clean
 
-    # Change bash shells to zsh
+# Change bash shells to zsh
 RUN sed -i 's/\/bin\/bash/\/usr\/bin\/zsh/g' /etc/passwd && \
     # Download fonts and starship then check hashes
     curl -LO https://github.com/ryanoasis/nerd-fonts/releases/download/v3.2.1/SourceCodePro.zip && \
@@ -80,16 +88,8 @@ RUN sed -i 's/\/bin\/bash/\/usr\/bin\/zsh/g' /etc/passwd && \
 # Set the locale
 RUN sed -i 's/# \(en_US\.UTF-8 .*\)/\1/' /etc/locale.gen && \
     locale-gen
-ENV LANG en_US.UTF-8  
-ENV LANGUAGE en_US:en  
-ENV LC_ALL en_US.UTF-8 
-
-# Add a user `coder` so that you're not developing as the `root` user
-RUN useradd coder \
-      --create-home \
-      --shell=/usr/bin/zsh \
-      --uid=1000 \
-      --user-group && \
-    echo "coder ALL=(ALL) NOPASSWD:ALL" >>/etc/sudoers.d/nopasswd
+ENV LANG=en_US.UTF-8  
+ENV LANGUAGE=en_US:en  
+ENV LC_ALL=en_US.UTF-8 
 
 USER coder

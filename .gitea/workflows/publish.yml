@@ -1,4 +1,4 @@
-name: Build and Publish Images
+name: Build and Publish Images (Unified)
 
 on:
   push:
@@ -12,20 +12,55 @@ on:
   workflow_dispatch:
 
 env:
-  REGISTRY: ghcr.io
-  IMAGE_PREFIX: ghcr.io/${{ github.repository_owner }}/coder-images
+  # Detect platform and set appropriate values
+  IS_GITEA: ${{ gitea.repository_owner != '' }}
+  IS_GITHUB: ${{ github.repository_owner != '' && gitea.repository_owner == '' }}
+
+  # Registry configuration (auto-detects platform)
+  REGISTRY: ${{ gitea.repository_owner != '' && 'gitea.labgophers.com' || 'ghcr.io' }}
+  REGISTRY_USERNAME: ${{ gitea.repository_owner != '' && gitea.actor || github.actor }}
+  REGISTRY_PASSWORD: ${{ gitea.repository_owner != '' && secrets.GITEA_TOKEN || secrets.GITHUB_TOKEN }}
+  IMAGE_OWNER: ${{ gitea.repository_owner != '' && gitea.repository_owner || github.repository_owner }}
 
 jobs:
+  # Detect platform and output configuration
+  detect-platform:
+    runs-on: ubuntu-latest
+    outputs:
+      platform: ${{ steps.detect.outputs.platform }}
+      registry: ${{ steps.detect.outputs.registry }}
+      image-prefix: ${{ steps.detect.outputs.image-prefix }}
+    steps:
+      - name: Detect platform
+        id: detect
+        run: |
+          if [ -n "${{ gitea.repository_owner }}" ]; then
+            echo "platform=gitea" >> $GITHUB_OUTPUT
+            echo "registry=${{ vars.GITEA_REGISTRY || 'gitea.labgophers.com' }}" >> $GITHUB_OUTPUT
+            echo "image-prefix=${{ vars.GITEA_REGISTRY || 'gitea.labgophers.com' }}/${{ gitea.repository_owner }}/coder-images" >> $GITHUB_OUTPUT
+            echo "🟢 Running on Gitea"
+          else
+            echo "platform=github" >> $GITHUB_OUTPUT
+            echo "registry=ghcr.io" >> $GITHUB_OUTPUT
+            echo "image-prefix=ghcr.io/${{ github.repository_owner }}/coder-images" >> $GITHUB_OUTPUT
+            echo "🟢 Running on GitHub"
+          fi
+
+      - name: Show configuration
+        run: |
+          echo "Platform: ${{ steps.detect.outputs.platform }}"
+          echo "Registry: ${{ steps.detect.outputs.registry }}"
+          echo "Image Prefix: ${{ steps.detect.outputs.image-prefix }}"
+
   # Build base image first (required by dependent images)
   build-base:
     runs-on: ubuntu-latest
+    needs: detect-platform
     permissions:
       contents: read
       packages: write
     outputs:
       digest: ${{ steps.build.outputs.digest }}
-      image-id: ${{ steps.build.outputs.imageid }}
-      metadata: ${{ steps.build.outputs.metadata }}
       tags: ${{ steps.meta.outputs.tags }}
       version: ${{ steps.meta.outputs.version }}
     steps:
@@ -37,23 +72,19 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-        with:
-          driver-opts: |
-            image=moby/buildkit:latest
-            network=host
 
       - name: Log in to Container Registry
         uses: docker/login-action@v3
         with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          registry: ${{ needs.detect-platform.outputs.registry }}
+          username: ${{ gitea.actor || github.actor }}
+          password: ${{ secrets.GITEA_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Extract Docker metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.IMAGE_PREFIX }}-base
+          images: ${{ needs.detect-platform.outputs.image-prefix }}-base
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
@@ -75,19 +106,20 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=registry,ref=${{ env.IMAGE_PREFIX }}-base:buildcache
-          cache-to: type=registry,ref=${{ env.IMAGE_PREFIX }}-base:buildcache,mode=max
+          cache-from: type=registry,ref=${{ needs.detect-platform.outputs.image-prefix }}-base:buildcache
+          cache-to: type=registry,ref=${{ needs.detect-platform.outputs.image-prefix }}-base:buildcache,mode=max
           provenance: false
 
       - name: Output base image info
         run: |
-          echo "Base image built successfully!"
+          echo "✅ Base image built on ${{ needs.detect-platform.outputs.platform }}"
           echo "Digest: ${{ steps.build.outputs.digest }}"
-          echo "Tags: ${{ steps.meta.outputs.tags }}"
+          echo "Registry: ${{ needs.detect-platform.outputs.registry }}"
 
-  # Build independent images (podman, kali-desktop) that don't depend on base
+  # Build independent images (podman, kali-desktop)
   build-independent:
     runs-on: ubuntu-latest
+    needs: detect-platform
     permissions:
       contents: read
       packages: write
@@ -104,23 +136,19 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-        with:
-          driver-opts: |
-            image=moby/buildkit:latest
-            network=host
 
       - name: Log in to Container Registry
         uses: docker/login-action@v3
         with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          registry: ${{ needs.detect-platform.outputs.registry }}
+          username: ${{ gitea.actor || github.actor }}
+          password: ${{ secrets.GITEA_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Extract Docker metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.IMAGE_PREFIX }}-${{ matrix.image }}
+          images: ${{ needs.detect-platform.outputs.image-prefix }}-${{ matrix.image }}
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
@@ -141,14 +169,14 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=registry,ref=${{ env.IMAGE_PREFIX }}-${{ matrix.image }}:buildcache
-          cache-to: type=registry,ref=${{ env.IMAGE_PREFIX }}-${{ matrix.image }}:buildcache,mode=max
+          cache-from: type=registry,ref=${{ needs.detect-platform.outputs.image-prefix }}-${{ matrix.image }}:buildcache
+          cache-to: type=registry,ref=${{ needs.detect-platform.outputs.image-prefix }}-${{ matrix.image }}:buildcache,mode=max
           provenance: false
 
-  # Build images that depend on base image
+  # Build images that depend on base
   build-dependent:
     runs-on: ubuntu-latest
-    needs: build-base
+    needs: [detect-platform, build-base]
     permissions:
       contents: read
       packages: write
@@ -163,29 +191,13 @@ jobs:
       - name: Determine base image reference
         id: base-ref
         run: |
-          # Use digest if available (most reliable), otherwise fall back to tag
           if [[ -n "${{ needs.build-base.outputs.digest }}" ]]; then
-            # Use digest for guaranteed immutability
             echo "reference=${{ needs.build-base.outputs.digest }}" >> $GITHUB_OUTPUT
-            echo "Using base image by digest: ${{ needs.build-base.outputs.digest }}"
+            echo "Using base digest: ${{ needs.build-base.outputs.digest }}"
           else
-            # Fallback to tag (for PRs or if digest unavailable)
-            if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
-              echo "reference=latest" >> $GITHUB_OUTPUT
-              echo "Using base image tag: latest"
-            elif [[ "${{ github.ref }}" == refs/tags/* ]]; then
-              TAG="${GITHUB_REF#refs/tags/}"
-              TAG="${TAG#v}"
-              echo "reference=${TAG}" >> $GITHUB_OUTPUT
-              echo "Using base image tag: ${TAG}"
-            elif [[ "${{ github.ref }}" == refs/pull/* ]]; then
-              echo "reference=pr-${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
-              echo "Using base image tag: pr-${{ github.event.pull_request.number }}"
-            else
-              BRANCH="${GITHUB_REF#refs/heads/}"
-              echo "reference=${BRANCH}" >> $GITHUB_OUTPUT
-              echo "Using base image tag: ${BRANCH}"
-            fi
+            # Fallback to latest
+            echo "reference=latest" >> $GITHUB_OUTPUT
+            echo "Using base tag: latest"
           fi
 
       - name: Set up QEMU
@@ -193,41 +205,31 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-        with:
-          driver-opts: |
-            image=moby/buildkit:latest
-            network=host
 
       - name: Log in to Container Registry
         uses: docker/login-action@v3
         with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          registry: ${{ needs.detect-platform.outputs.registry }}
+          username: ${{ gitea.actor || github.actor }}
+          password: ${{ secrets.GITEA_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Extract Docker metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.IMAGE_PREFIX }}-${{ matrix.image }}
+          images: ${{ needs.detect-platform.outputs.image-prefix }}-${{ matrix.image }}
           tags: |
-            # Git tag versions (v1.2.3 → 1.2.3, 1.2, 1)
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
-            # Branch name
             type=ref,event=branch
-            # PR number
             type=ref,event=pr
-            # Git SHA
             type=sha,prefix={{branch}}-
-            # Latest tag (only on main)
             type=raw,value=latest,enable={{is_default_branch}}
           flavor: |
             latest=false
 
       - name: Build and push image
-        id: build
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -236,17 +238,15 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=registry,ref=${{ env.IMAGE_PREFIX }}-${{ matrix.image }}:buildcache
-          cache-to: type=registry,ref=${{ env.IMAGE_PREFIX }}-${{ matrix.image }}:buildcache,mode=max
+          cache-from: type=registry,ref=${{ needs.detect-platform.outputs.image-prefix }}-${{ matrix.image }}:buildcache
+          cache-to: type=registry,ref=${{ needs.detect-platform.outputs.image-prefix }}-${{ matrix.image }}:buildcache,mode=max
           provenance: false
           build-args: |
-            REGISTRY=${{ env.REGISTRY }}
-            IMAGE_OWNER=${{ github.repository_owner }}
+            REGISTRY=${{ needs.detect-platform.outputs.registry }}
+            IMAGE_OWNER=${{ gitea.repository_owner || github.repository_owner }}
             BASE_TAG=${{ steps.base-ref.outputs.reference }}
 
       - name: Output image info
         run: |
-          echo "✅ Image built: ${{ env.IMAGE_PREFIX }}-${{ matrix.image }}"
+          echo "✅ ${{ matrix.image }} built on ${{ needs.detect-platform.outputs.platform }}"
           echo "Digest: ${{ steps.build.outputs.digest }}"
-          echo "Tags: ${{ steps.meta.outputs.tags }}"
-          echo "Base reference used: ${{ steps.base-ref.outputs.reference }}"
