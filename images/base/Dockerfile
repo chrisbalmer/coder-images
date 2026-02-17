@@ -5,13 +5,13 @@ SHELL ["/bin/bash", "-c"]
 COPY /src/files.sha256 /tmp/
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Add a user `coder` so that you're not developing as the `root` user
-RUN useradd coder \
+# Remove user `ubuntu` and add a user `coder`
+RUN userdel ubuntu && \
+    useradd coder \
       --create-home \
       --shell=/usr/bin/zsh \
       --uid=1000 \
-      --user-group && \
-    echo "coder ALL=(ALL) NOPASSWD:ALL" >>/etc/sudoers.d/nopasswd
+      --user-group
 
 # Install required tools
 RUN apt update && \
@@ -83,7 +83,9 @@ RUN sed -i 's/\/bin\/bash/\/usr\/bin\/zsh/g' /etc/passwd && \
     # Install starship
     tar xvf starship-x86_64-unknown-linux-musl.tar.gz && \
     mv starship /usr/local/bin/ && \
-    rm starship-x86_64-unknown-linux-musl.tar.gz
+    rm starship-x86_64-unknown-linux-musl.tar.gz && \
+    # Allow coder user to use sudo without password
+    echo "coder ALL=(ALL) NOPASSWD:ALL" >>/etc/sudoers.d/nopasswd
 
 # Set the locale
 RUN sed -i 's/# \(en_US\.UTF-8 .*\)/\1/' /etc/locale.gen && \
