@@ -30,6 +30,7 @@ jobs:
       platform: ${{ steps.detect.outputs.platform }}
       registry: ${{ steps.detect.outputs.registry }}
       image-prefix: ${{ steps.detect.outputs.image-prefix }}
+      platforms: ${{ steps.detect.outputs.platforms }}
     steps:
       - name: Detect platform
         id: detect
@@ -38,12 +39,14 @@ jobs:
             echo "platform=gitea" >> $GITHUB_OUTPUT
             echo "registry=${{ vars.GITEA_REGISTRY || 'gitea.labgophers.com' }}" >> $GITHUB_OUTPUT
             echo "image-prefix=${{ vars.GITEA_REGISTRY || 'gitea.labgophers.com' }}/${{ gitea.repository_owner }}/coder-images" >> $GITHUB_OUTPUT
-            echo "🟢 Running on Gitea"
+            echo "platforms=linux/amd64" >> $GITHUB_OUTPUT
+            echo "🟢 Running on Gitea (amd64 only, no binfmt_misc in Talos kernel)"
           else
             echo "platform=github" >> $GITHUB_OUTPUT
             echo "registry=ghcr.io" >> $GITHUB_OUTPUT
             echo "image-prefix=ghcr.io/${{ github.repository_owner }}/coder-images" >> $GITHUB_OUTPUT
-            echo "🟢 Running on GitHub"
+            echo "platforms=linux/amd64,linux/arm64" >> $GITHUB_OUTPUT
+            echo "🟢 Running on GitHub (multi-arch)"
           fi
 
       - name: Show configuration
@@ -68,6 +71,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up QEMU
+        if: needs.detect-platform.outputs.platform != 'gitea'
         uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
@@ -102,7 +106,7 @@ jobs:
         with:
           context: .
           file: ./images/base/Dockerfile
-          platforms: linux/amd64,linux/arm64
+          platforms: ${{ needs.detect-platform.outputs.platforms }}
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -132,6 +136,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up QEMU
+        if: needs.detect-platform.outputs.platform != 'gitea'
         uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
@@ -165,7 +170,7 @@ jobs:
         with:
           context: .
           file: ./images/${{ matrix.image }}/Dockerfile
-          platforms: linux/amd64,linux/arm64
+          platforms: ${{ needs.detect-platform.outputs.platforms }}
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -201,6 +206,7 @@ jobs:
           fi
 
       - name: Set up QEMU
+        if: needs.detect-platform.outputs.platform != 'gitea'
         uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
@@ -234,7 +240,7 @@ jobs:
         with:
           context: .
           file: ./images/${{ matrix.image }}/Dockerfile
-          platforms: linux/amd64,linux/arm64
+          platforms: ${{ needs.detect-platform.outputs.platforms }}
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
