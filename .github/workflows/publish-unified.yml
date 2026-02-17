@@ -183,7 +183,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        image: [golang, xsoar, terraform, ubuntu-desktop]
+        image: [golang, cortex, terraform, ubuntu-desktop]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4

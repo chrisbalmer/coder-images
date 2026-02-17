@@ -8,7 +8,7 @@ Container images for [Coder](https://coder.com) workspaces. Supports dual-platfo
 |-------|------|---------|
 | `base` | Ubuntu | Foundation image with common tools |
 | `golang` | `base` | Go development environment |
-| `xsoar` | `base` | Palo Alto XSOAR development |
+| `cortex` | `base` | Palo Alto Cortex (XSOAR/XSIAM) development |
 | `terraform` | `base` | Terraform and Terragrunt |
 | `ubuntu-desktop` | `base` | Ubuntu with desktop environment |
 | `podman` | Fedora | Podman container runtime |
@@ -75,7 +75,7 @@ Three jobs run in order:
 
 1. **`build-base`** — Builds the `base` image, outputs its digest
 2. **`build-independent`** — Builds `podman` and `kali-desktop` in parallel
-3. **`build-dependent`** — Waits for `build-base`, then builds `golang`, `xsoar`, `terraform`, `ubuntu-desktop` in parallel using the base digest
+3. **`build-dependent`** — Waits for `build-base`, then builds `golang`, `cortex`, `terraform`, `ubuntu-desktop` in parallel using the base digest
 
 Dependent images reference `base` by digest (not tag) to guarantee consistency and avoid race conditions.
 
