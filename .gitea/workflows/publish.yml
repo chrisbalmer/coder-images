@@ -12,15 +12,7 @@ on:
   workflow_dispatch:
 
 env:
-  # Detect platform and set appropriate values
-  IS_GITEA: ${{ gitea.repository_owner != '' }}
-  IS_GITHUB: ${{ github.repository_owner != '' && gitea.repository_owner == '' }}
-
-  # Registry configuration (auto-detects platform)
-  REGISTRY: ${{ gitea.repository_owner != '' && 'gitea.labgophers.com' || 'ghcr.io' }}
-  REGISTRY_USERNAME: ${{ gitea.repository_owner != '' && gitea.actor || github.actor }}
-  REGISTRY_PASSWORD: ${{ gitea.repository_owner != '' && secrets.GITEA_TOKEN || secrets.GITHUB_TOKEN }}
-  IMAGE_OWNER: ${{ gitea.repository_owner != '' && gitea.repository_owner || github.repository_owner }}
+  IMAGE_PREFIX: gitea.labgophers.com/${{ gitea.repository_owner }}/coder-images
 
 jobs:
   # Detect platform and output configuration
@@ -81,8 +73,8 @@ jobs:
         uses: docker/login-action@v3
         with:
           registry: ${{ needs.detect-platform.outputs.registry }}
-          username: ${{ gitea.actor || github.actor }}
-          password: ${{ secrets.GITEA_TOKEN || secrets.GITHUB_TOKEN }}
+          username: ${{ gitea.actor }}
+          password: ${{ gitea.token }}
 
       - name: Extract Docker metadata
         id: meta
@@ -146,8 +138,8 @@ jobs:
         uses: docker/login-action@v3
         with:
           registry: ${{ needs.detect-platform.outputs.registry }}
-          username: ${{ gitea.actor || github.actor }}
-          password: ${{ secrets.GITEA_TOKEN || secrets.GITHUB_TOKEN }}
+          username: ${{ gitea.actor }}
+          password: ${{ gitea.token }}
 
       - name: Extract Docker metadata
         id: meta
@@ -216,8 +208,8 @@ jobs:
         uses: docker/login-action@v3
         with:
           registry: ${{ needs.detect-platform.outputs.registry }}
-          username: ${{ gitea.actor || github.actor }}
-          password: ${{ secrets.GITEA_TOKEN || secrets.GITHUB_TOKEN }}
+          username: ${{ gitea.actor }}
+          password: ${{ gitea.token }}
 
       - name: Extract Docker metadata
         id: meta

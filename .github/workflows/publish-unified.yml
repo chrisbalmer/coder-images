@@ -78,7 +78,7 @@ jobs:
         with:
           registry: ${{ needs.detect-platform.outputs.registry }}
           username: ${{ gitea.actor || github.actor }}
-          password: ${{ secrets.GITEA_TOKEN || secrets.GITHUB_TOKEN }}
+          password: ${{ gitea.token || github.token }}
 
       - name: Extract Docker metadata
         id: meta
@@ -142,7 +142,7 @@ jobs:
         with:
           registry: ${{ needs.detect-platform.outputs.registry }}
           username: ${{ gitea.actor || github.actor }}
-          password: ${{ secrets.GITEA_TOKEN || secrets.GITHUB_TOKEN }}
+          password: ${{ gitea.token || github.token }}
 
       - name: Extract Docker metadata
         id: meta
@@ -211,7 +211,7 @@ jobs:
         with:
           registry: ${{ needs.detect-platform.outputs.registry }}
           username: ${{ gitea.actor || github.actor }}
-          password: ${{ secrets.GITEA_TOKEN || secrets.GITHUB_TOKEN }}
+          password: ${{ gitea.token || github.token }}
 
       - name: Extract Docker metadata
         id: meta
