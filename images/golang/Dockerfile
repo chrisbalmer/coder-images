@@ -12,9 +12,9 @@ RUN curl -LO "https://go.dev/dl/go1.26.0.linux-${TARGETARCH}.tar.gz" && \
     tar -C /usr/local -xzvf go1.26.0.linux-${TARGETARCH}.tar.gz && \
     rm go1.26.0.linux-${TARGETARCH}.tar.gz
 
-RUN apt update && \
+RUN apt-get update && \
     env && \
-    apt install -y \
+    apt-get install -y \
       mysql-client postgresql-client && \
     apt clean
 
@@ -22,12 +22,23 @@ RUN apt update && \
 ENV GOROOT /usr/local/go
 ENV PATH $PATH:$GOROOT/bin
 
-ENV GOPATH /home/coder/go
-ENV GOBIN $GOPATH/bin
-ENV PATH $PATH:$GOBIN
+# Setup temp GOPATH and GOBIN
+ENV GOPATH=/opt/go
+ENV GOBIN=$GOPATH/bin
+ENV ORIGPATH=$PATH
+ENV PATH=$PATH:$GOBIN
+
+# Prep tools to copy to k8s volume
+RUN mkdir -p /opt/go && \
+    go install -v golang.org/x/tools/cmd/goimports@latest && \
+    go install -v golang.org/x/tools/gopls@latest && \
+    go install -v github.com/go-delve/delve/cmd/dlv@latest && \
+    chown -R coder:coder /opt/go
 
 # Set back to coder user
 USER coder
-RUN mkdir -p /home/coder/go/bin && \
-    go install -v golang.org/x/tools/cmd/goimports@latest && \
-    go install -v golang.org/x/tools/gopls@latest
+
+# Fix go pathing
+ENV GOPATH=/home/coder/go
+ENV GOBIN=$GOPATH/bin
+ENV PATH=$ORIGPATH:$GOBIN
