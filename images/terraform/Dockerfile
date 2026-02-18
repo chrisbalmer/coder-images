@@ -27,8 +27,9 @@ RUN apt update && \
 
 # Install ansible
 COPY /src/terraform-requirements.txt /tmp/requirements.txt
-RUN pip3 install --upgrade pip && \
-    pip3 install -r /tmp/requirements.txt
+RUN python3 -m venv /home/coder/.venv && \
+    /home/coder/.venv/bin/pip install --upgrade pip && \
+    /home/coder/.venv/bin/pip install -r /tmp/requirements.txt
 
 # Set back to coder user
 USER coder
