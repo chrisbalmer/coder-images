@@ -4,12 +4,13 @@ FROM ${BASE_IMAGE}
 # Run everything as root
 USER root
 
-# Install go
+# Install go — TARGETARCH is set automatically by Docker for multi-platform builds
+ARG TARGETARCH
 COPY /src/files.sha256 /tmp/
-RUN curl -LO "https://go.dev/dl/go1.23.4.linux-amd64.tar.gz" && \
+RUN curl -LO "https://go.dev/dl/go1.26.0.linux-${TARGETARCH}.tar.gz" && \
     sha256sum --ignore-missing --check /tmp/files.sha256 && \
-    tar -C /usr/local -xzvf go1.23.4.linux-amd64.tar.gz && \
-    rm go1.23.4.linux-amd64.tar.gz
+    tar -C /usr/local -xzvf go1.26.0.linux-${TARGETARCH}.tar.gz && \
+    rm go1.26.0.linux-${TARGETARCH}.tar.gz
 
 RUN apt update && \
     env && \
