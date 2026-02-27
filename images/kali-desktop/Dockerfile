@@ -1,5 +1,7 @@
 FROM kalilinux/kali-rolling:latest
 
+# Pin apt mirror to kali.download to avoid random mirror selection
+RUN echo "deb https://kali.download/kali kali-rolling main contrib non-free non-free-firmware" > /etc/apt/sources.list
 
 # Install kali packages
 ARG KALI_METAPACKAGE=core
