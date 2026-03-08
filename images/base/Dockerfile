@@ -59,6 +59,7 @@ RUN apt update && \
       iputils-ping \
       jq \
       locales \
+      npm \
       man \
       python3 \
       python3-pip \
