@@ -4,7 +4,8 @@
 # A workspace mounts its persistent home volume over /home/coder, and a Kubernetes volume is not
 # seeded from the image, so anything the image put there is hidden. The home here is a tmpfs:
 # Docker seeds an empty named volume from the image, which would hide exactly that bug, and bind
-# mounts are unreliable on the dind runners. NET_RAW and MKNOD are dropped as in the workspace pod.
+# mounts are unreliable on Docker-in-Docker CI runners. NET_RAW and MKNOD are dropped, as a
+# hardened workspace pod would drop them.
 # The checks run in a login zsh, the coder user's shell, so a profile that resets PATH fails too.
 #
 # Usage: scripts/smoke-empty-home.sh <image name> <image reference>
