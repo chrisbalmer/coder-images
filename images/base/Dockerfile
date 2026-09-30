@@ -43,8 +43,16 @@ RUN curl -sS https://downloads.1password.com/linux/keys/1password.asc | \
     echo "Signed-by: /etc/apt/keyrings/microsoft.gpg" >> /etc/apt/sources.list.d/azure-cli.sources && \
     # Add Git repo
     add-apt-repository ppa:git-core/ppa && \
-    # Add NodeSource repo for Node.js 22.x LTS
-    curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+    # Add NodeSource repo for Node.js 22.x LTS: its signing key and a signed-by source, the same
+    # as the repos above, rather than running NodeSource's setup script unverified. The pin makes
+    # apt prefer NodeSource's nodejs over Ubuntu's, which is what the setup script also writes.
+    curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | \
+    gpg --dearmor --output /etc/apt/keyrings/nodesource.gpg && \
+    chmod go+r /etc/apt/keyrings/nodesource.gpg && \
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_22.x nodistro main" \
+      > /etc/apt/sources.list.d/nodesource.list && \
+    printf 'Package: nodejs\nPin: origin deb.nodesource.com\nPin-Priority: 600\n' \
+      > /etc/apt/preferences.d/nodejs
 
 # Install apps.
 #
@@ -111,9 +119,9 @@ RUN sed -i 's/\/bin\/bash/\/usr\/bin\/zsh/g' /etc/passwd && \
     # Allow coder user to use sudo without password
     echo "coder ALL=(ALL) NOPASSWD:ALL" >>/etc/sudoers.d/nopasswd
 
-# Tools the workspace templates rely on: kubectl (startup waits on the lab services and reads
-# secrets), yq, uv (next to Python 3), and mc for the lab MinIO bucket. The Postgres and MySQL
-# clients for the other two labs come from apt above. gh, tea and fj are the GitHub, Gitea and
+# Tools the workspace templates rely on: kubectl (startup scripts wait on in-namespace services
+# and read their secrets), yq, uv (next to Python 3), and mc for S3-compatible object storage.
+# The Postgres and MySQL clients come from apt above. gh, tea and fj are the GitHub, Gitea and
 # Forgejo CLIs; tea and fj publish no checksum files, so their lines were recorded on download. Each is pinned and must
 # have a line in checksums.sha256: `--ignore-missing` alone would pass a file with no line, so
 # the loop refuses one first. mc is archived upstream; this is its last release, and it gets no

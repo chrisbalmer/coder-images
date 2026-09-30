@@ -20,14 +20,9 @@ RUN curl -LO "https://go.dev/dl/go1.27.1.linux-${TARGETARCH}.tar.gz" && \
     tar -C /usr/local -xzvf go1.27.1.linux-${TARGETARCH}.tar.gz && \
     rm go1.27.1.linux-${TARGETARCH}.tar.gz
 
-RUN apt-get update && \
-    apt-get install -y \
-      mysql-client postgresql-client && \
-    apt-get clean
-
 # Setup go env vars
-ENV GOROOT /usr/local/go
-ENV PATH $PATH:$GOROOT/bin
+ENV GOROOT=/usr/local/go
+ENV PATH=$PATH:$GOROOT/bin
 
 # Editor and debugger tools, pinned and installed next to the tools below. The module downloads
 # are verified against the Go checksum database (sum.golang.org). The build-time GOPATH and cache
