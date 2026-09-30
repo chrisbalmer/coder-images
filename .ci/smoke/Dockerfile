@@ -6,7 +6,7 @@
 # QEMU producing a multi-arch index. Before this file existed none of it had ever executed, and a
 # mistake in the action only surfaced the first time a real image was pushed.
 #
-# So the `smoke` job in both workflows builds this file with publish=false on every pull request.
+# So the workflow's `smoke` job builds this file with publish=false on every pull request.
 # It takes seconds, touches nothing, and fails the PR if the action is broken.
 #
 # Two constraints keep it cheap and correct:

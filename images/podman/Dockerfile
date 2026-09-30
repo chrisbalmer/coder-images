@@ -4,7 +4,7 @@ SHELL ["/bin/bash", "-c"]
 
 # Fetch packages from dl.fedoraproject.org only. The stock repos use a metalink, which hands dnf
 # a location-dependent list of third-party mirrors (some plain HTTP) that no egress allowlist can
-# track; the build runners allow dl.fedoraproject.org. Cisco's OpenH264 codecs repo is not needed.
+# track, whereas a build behind one only needs dl.fedoraproject.org. Cisco's OpenH264 codecs repo is not needed.
 # The build fails if any repo still points at a mirror list.
 RUN sed -i \
       -e 's|^#baseurl=http://download.example/pub/fedora/linux/|baseurl=https://dl.fedoraproject.org/pub/fedora/linux/|' \
