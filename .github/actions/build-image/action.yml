@@ -1,0 +1,240 @@
+name: Build and publish one image
+description: >
+  Builds one image from this repo and, on the default branch, publishes it as <branch>,
+  <branch>-<sha> and src-<inputs_key>; for a release candidate, as <version> only. Shared by every
+  job in the publish workflow. Releases do not build: they promote src-<key> (scripts/promote.sh).
+
+# Input names must not match an input of any action used below (setup-qemu: image, platforms;
+# setup-buildx: version, name, platforms). Gitea and Forgejo runners pass a composite action's inputs on to
+# the actions nested in it, so `image: kali-desktop` became the QEMU helper image to pull.
+inputs:
+  image_name:
+    description: Image name from .ci/graph.json, for example cortex
+    required: true
+  dockerfile:
+    description: Path to the Dockerfile
+    required: true
+  description:
+    description: OCI image description
+    default: ""
+  image_prefix:
+    description: <registry>/<owner>/coder-images
+    required: true
+  registry:
+    description: Registry host to log in to
+    required: true
+  tag_source:
+    description: >
+      branch (default-branch build), rc (release candidate, published as `version` only) or
+      skip (PR build, never published)
+    required: true
+  rc_version:
+    description: Release-candidate version, e.g. 2.0.0-rc.1, when tag_source is rc
+    default: ""
+  branch:
+    description: Branch name used in the <branch> and <branch>-<sha> tags
+    default: main
+  inputs_key:
+    description: Content key of this image's build inputs; published as src-<key>
+    default: ""
+  apt_upgrade:
+    description: true or false for images that declare ARG APT_UPGRADE; empty to leave it alone
+    default: ""
+  base_name:
+    description: <base repository>:<pinned version>, for the base.name label; empty if standalone
+    default: ""
+  base_ref:
+    description: <base repository>@<digest> to build FROM; empty if standalone
+    default: ""
+  base_digest:
+    description: Digest in base_ref, for the base.digest label
+    default: ""
+  build_platforms:
+    description: Platforms to build
+    default: linux/amd64,linux/arm64
+  username:
+    description: Registry username
+    required: true
+  password:
+    description: Registry password or token
+    required: true
+  publish:
+    description: Literal true or false
+    required: true
+  cache_from:
+    description: false for an image with no buildcache tag to read (the smoke image)
+    default: "true"
+
+outputs:
+  digest:
+    description: Digest of the pushed image, empty when nothing was pushed
+    value: ${{ steps.build.outputs.digest }}
+
+runs:
+  using: composite
+  steps:
+    - name: Compose tags, build args and cache
+      id: compose
+      shell: bash
+      env:
+        IMAGE: ${{ inputs.image_prefix }}-${{ inputs.image_name }}
+        TAG_SOURCE: ${{ inputs.tag_source }}
+        VERSION: ${{ inputs.rc_version }}
+        PUBLISH: ${{ inputs.publish }}
+        BRANCH: ${{ inputs.branch }}
+        INPUTS_KEY: ${{ inputs.inputs_key }}
+        APT_UPGRADE: ${{ inputs.apt_upgrade }}
+        BASE_NAME: ${{ inputs.base_name }}
+        BASE_REF: ${{ inputs.base_ref }}
+        BASE_DIGEST: ${{ inputs.base_digest }}
+        DESCRIPTION: ${{ inputs.description }}
+        CACHE_FROM: ${{ inputs.cache_from }}
+        SHA: ${{ github.sha }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+      run: |
+        set -euo pipefail
+        case "$TAG_SOURCE/$PUBLISH" in
+          branch/true|branch/false|rc/true|rc/false|skip/false) ;;
+          *) echo "::error::tag_source=$TAG_SOURCE with publish=$PUBLISH is not allowed"; exit 1 ;;
+        esac
+        if [ "$TAG_SOURCE" = rc ] && [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$ ]]; then
+          echo "::error::tag_source=rc needs a version like 2.0.0-rc.1, got '$VERSION'"; exit 1
+        fi
+        if [ "$TAG_SOURCE" = branch ] && [ "$PUBLISH" = true ] && [ -z "$INPUTS_KEY" ]; then
+          echo "::error::a published build needs inputs_key, or no release could promote it"; exit 1
+        fi
+        case "$APT_UPGRADE" in ''|true|false) ;; *) echo "::error::bad apt_upgrade '$APT_UPGRADE'"; exit 1 ;; esac
+
+        SHORT_SHA=${SHA:0:7}
+        if [ "$TAG_SOURCE" = rc ]; then
+          # A candidate never moves latest, a series tag or src-<key>: only its own version.
+          LABEL=$VERSION
+          TAGS="${IMAGE}:${VERSION}"
+        elif [ "$TAG_SOURCE" = branch ]; then
+          # `latest` and versions belong to releases, which promote src-<key>.
+          LABEL="${BRANCH}-${SHORT_SHA}"
+          TAGS="${IMAGE}:${BRANCH},${IMAGE}:${LABEL}"
+          if [ -n "$INPUTS_KEY" ]; then TAGS="${TAGS},${IMAGE}:src-${INPUTS_KEY}"; fi
+        else
+          # Never pushed, but buildx still validates tags, and a tag may not contain `/`.
+          if [ -n "$PR_NUMBER" ]; then LABEL="pr-${PR_NUMBER}"; else LABEL=dev; fi
+          TAGS="${IMAGE}:${LABEL},${IMAGE}:${LABEL}-${SHORT_SHA}"
+        fi
+
+        # The commit time, not the wall clock, so rebuilding one commit stamps it identically.
+        EPOCH=$(git log -1 --format=%ct HEAD)
+        {
+          printf 'tags=%s\n' "$TAGS"
+          printf 'args<<EOF\n'
+          if [ "$TAG_SOURCE" = rc ]; then printf 'VERSION=%s\n' "$LABEL"; else printf 'VERSION=ci/%s\n' "$LABEL"; fi
+          printf 'GIT_SHA=%s\n' "$SHA"
+          printf 'BUILD_CREATED=%s\n' "$(date -u -d "@${EPOCH}" +%Y-%m-%dT%H:%M:%SZ)"
+          printf 'SOURCE_DATE_EPOCH=%s\n' "$EPOCH"
+          printf 'IMAGE_DESCRIPTION=%s\n' "$DESCRIPTION"
+          if [ -n "$APT_UPGRADE" ]; then printf 'APT_UPGRADE=%s\n' "$APT_UPGRADE"; fi
+          if [ -n "$BASE_REF" ]; then
+            printf 'BASE_NAME=%s\nBASE_REF=%s\nBASE_DIGEST=%s\n' "${BASE_NAME%:*}" "$BASE_REF" "$BASE_DIGEST"
+          fi
+          printf 'EOF\n'
+          if [ "$CACHE_FROM" = true ]; then
+            printf 'cache_from=type=registry,ref=%s:buildcache\n' "$IMAGE"
+          else
+            printf 'cache_from=\n'
+          fi
+          # A cache export is a registry write, so only publishing builds do it. image-manifest
+          # stores it as an ordinary OCI image, which Harbor requires and ghcr.io accepts.
+          if [ "$PUBLISH" = true ]; then
+            printf 'cache_to=type=registry,ref=%s:buildcache,mode=max,image-manifest=true,oci-mediatypes=true\n' "$IMAGE"
+          else
+            printf 'cache_to=\n'
+          fi
+        } >> "$GITHUB_OUTPUT"
+        echo "Tags: $TAGS"
+
+    # No image cache: concurrent matrix legs on one runner share /opt/hostedtoolcache, and caching
+    # the binfmt image there races (EISDIR/ENOENT/EEXIST). Pulling it per job is cheap.
+    - uses: docker/setup-qemu-action@v3
+      with:
+        cache-image: false
+
+    - uses: docker/setup-buildx-action@v3
+
+    - name: Log in to the registry
+      # A run that must not publish must not log in either: a fork's token cannot write here.
+      if: inputs.publish == 'true'
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ inputs.registry }}
+        username: ${{ inputs.username }}
+        password: ${{ inputs.password }}
+
+    # A workspace mounts its home volume over /home/coder, which hides anything the image put
+    # there. Before anything is pushed, build the amd64 image into the local daemon and run its
+    # tools with an empty home (scripts/smoke-empty-home.sh). The multi-arch build below reuses
+    # these layers from the builder's cache.
+    - name: Check for an empty-home smoke test
+      id: smoke
+      shell: bash
+      env:
+        NAME: ${{ inputs.image_name }}
+      run: |
+        if bash scripts/smoke-empty-home.sh --has "$NAME"; then echo run=true; else echo run=false; fi >> "$GITHUB_OUTPUT"
+
+    - name: Build amd64 for the smoke test
+      if: steps.smoke.outputs.run == 'true'
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: ${{ inputs.dockerfile }}
+        platforms: linux/amd64
+        load: true
+        push: false
+        tags: coder-images-smoke-${{ inputs.image_name }}:test
+        cache-from: ${{ steps.compose.outputs.cache_from }}
+        provenance: false
+        build-args: ${{ steps.compose.outputs.args }}
+
+    - name: Smoke test with an empty home
+      if: steps.smoke.outputs.run == 'true'
+      shell: bash
+      env:
+        NAME: ${{ inputs.image_name }}
+      run: bash scripts/smoke-empty-home.sh "$NAME" "coder-images-smoke-$NAME:test"
+
+    # The runner's Docker daemon outlives the job, and these images run to gigabytes.
+    - name: Remove the smoke-test image
+      if: always() && steps.smoke.outputs.run == 'true'
+      shell: bash
+      env:
+        NAME: ${{ inputs.image_name }}
+      run: docker image rm -f "coder-images-smoke-$NAME:test" || true
+
+    - name: Build and push
+      id: build
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: ${{ inputs.dockerfile }}
+        platforms: ${{ inputs.build_platforms }}
+        push: ${{ inputs.publish }}
+        tags: ${{ steps.compose.outputs.tags }}
+        cache-from: ${{ steps.compose.outputs.cache_from }}
+        cache-to: ${{ steps.compose.outputs.cache_to }}
+        # Attestations are generated per run and would give identical builds different digests.
+        provenance: false
+        build-args: ${{ steps.compose.outputs.args }}
+
+    - name: Summary
+      shell: bash
+      env:
+        DIGEST: ${{ steps.build.outputs.digest }}
+        TAGS: ${{ steps.compose.outputs.tags }}
+        BASE_REF: ${{ inputs.base_ref }}
+        NAME: ${{ inputs.image_name }}
+      run: |
+        {
+          printf '### %s\n\n' "$NAME"
+          printf -- '- **Digest:** `%s`\n' "${DIGEST:-not pushed}"
+          printf -- '- **Base:** `%s`\n' "${BASE_REF:-none}"
+          printf -- '- **Tags:** `%s`\n' "${TAGS//,/\`, \`}"
+        } >> "$GITHUB_STEP_SUMMARY"

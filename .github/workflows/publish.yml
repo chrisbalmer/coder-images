@@ -1,0 +1,246 @@
+name: Build and Publish Images
+
+# Publishes to ghcr.io under the repository owner by default. To publish somewhere else, for
+# example a private Harbor from a self-hosted Forgejo mirror (Forgejo runs .github/workflows
+# when there is no .forgejo/), set repository variables REGISTRY and IMAGE_OWNER and secrets
+# REGISTRY_USERNAME and REGISTRY_PASSWORD. Unset, they fall back to ghcr.io and the workflow token.
+
+on:
+  push:
+    branches: [main]
+    # Per-image releases (cortex-v2.0.0) and release candidates (cortex-v2.0.0-rc.1)
+    tags: ['*-v*.*.*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      images:
+        description: Comma-separated images to build anyway (empty = changed images only)
+        default: ''
+      all:
+        description: Build every image regardless of what changed
+        type: boolean
+        default: false
+      upgrade_base:
+        description: Refresh apt packages in base and kali-desktop (changes their digests)
+        type: boolean
+        default: false
+
+# A concurrency group keeps one running and one pending run, and a newer run cancels the pending
+# one. Each push builds only what its own commits changed, so a cancelled push run would leave its
+# images unbuilt: pushes (and manual runs) get a group per commit and never cancel each other. A
+# PR's older runs are superseded, and every tag runs on its own. The cost: two pushes that change
+# the same image build at once, and `main` may briefly point at the older build; src-<key> and
+# main-<sha>, which releases use, are exact either way.
+concurrency:
+  group: publish-${{ (github.event_name == 'pull_request' || startsWith(github.ref, 'refs/tags/')) && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  DEFAULT_BRANCH: main
+  REGISTRY: ${{ vars.REGISTRY || 'ghcr.io' }}
+  IMAGE_OWNER: ${{ vars.IMAGE_OWNER || github.repository_owner }}
+  IMAGE_PREFIX: ${{ vars.REGISTRY || 'ghcr.io' }}/${{ vars.IMAGE_OWNER || github.repository_owner }}/coder-images
+  # Repository variable BUILD_ARM64=false builds linux/amd64 only (arm64 is emulated, and slow,
+  # on amd64 runners). Unset or anything else builds both.
+  PLATFORMS: ${{ vars.BUILD_ARM64 == 'false' && 'linux/amd64' || 'linux/amd64,linux/arm64' }}
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate graph, scripts and pipelines
+        run: bash scripts/validate-ci.sh
+
+  # Builds .ci/smoke/Dockerfile through the real shared action, so a broken action fails review.
+  smoke:
+    needs: validate
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/build-image
+        with:
+          image_name: ci-smoke
+          dockerfile: .ci/smoke/Dockerfile
+          image_prefix: ${{ env.IMAGE_PREFIX }}
+          registry: ${{ env.REGISTRY }}
+          tag_source: skip
+          publish: 'false'
+          cache_from: 'false'
+          build_platforms: ${{ env.PLATFORMS }}
+          username: ${{ secrets.REGISTRY_USERNAME || github.actor }}
+          password: ${{ secrets.REGISTRY_PASSWORD || secrets.GITHUB_TOKEN }}
+
+  resolve:
+    needs: validate
+    runs-on: ubuntu-latest
+    outputs:
+      base: ${{ steps.plan.outputs.base }}
+      standalone: ${{ steps.plan.outputs.standalone }}
+      dependent: ${{ steps.plan.outputs.dependent }}
+      release: ${{ steps.plan.outputs.release }}
+      release_publish: ${{ steps.plan.outputs.release_publish }}
+    steps:
+      # Full history: the diff needs the compare commit, and a release checks main's ancestry.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Plan
+        id: plan
+        env:
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          REF: ${{ github.ref }}
+          REF_NAME: ${{ github.ref_name }}
+          OWNER: ${{ env.IMAGE_OWNER }}
+          REPOSITORY: ${{ github.repository }}
+          INPUT_IMAGES: ${{ github.event.inputs.images }}
+          INPUT_ALL: ${{ github.event.inputs.all }}
+          INPUT_UPGRADE_BASE: ${{ github.event.inputs.upgrade_base }}
+          REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME || github.actor }}
+          REGISTRY_PASSWORD: ${{ secrets.REGISTRY_PASSWORD || secrets.GITHUB_TOKEN }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: bash scripts/ci-resolve.sh
+
+  base:
+    needs: resolve
+    if: needs.resolve.outputs.base != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/build-image
+        with:
+          image_name: base
+          dockerfile: ${{ fromJSON(needs.resolve.outputs.base).dockerfile }}
+          description: ${{ fromJSON(needs.resolve.outputs.base).description }}
+          apt_upgrade: ${{ fromJSON(needs.resolve.outputs.base).apt_upgrade_arg }}
+          image_prefix: ${{ env.IMAGE_PREFIX }}
+          registry: ${{ env.REGISTRY }}
+          tag_source: ${{ fromJSON(needs.resolve.outputs.base).tag_source }}
+          rc_version: ${{ fromJSON(needs.resolve.outputs.base).version }}
+          branch: ${{ fromJSON(needs.resolve.outputs.base).branch }}
+          inputs_key: ${{ fromJSON(needs.resolve.outputs.base).inputs_key }}
+          publish: ${{ fromJSON(needs.resolve.outputs.base).publish }}
+          build_platforms: ${{ env.PLATFORMS }}
+          username: ${{ secrets.REGISTRY_USERNAME || github.actor }}
+          password: ${{ secrets.REGISTRY_PASSWORD || secrets.GITHUB_TOKEN }}
+
+  standalone:
+    # Fixed prefix: Gitea names jobs before resolve's matrix exists, so the image part can be blank.
+    name: standalone ${{ matrix.image.name }}
+    needs: resolve
+    if: needs.resolve.outputs.standalone != '[]' && needs.resolve.outputs.standalone != ''
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ${{ fromJSON(needs.resolve.outputs.standalone) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/build-image
+        with:
+          image_name: ${{ matrix.image.name }}
+          dockerfile: ${{ matrix.image.dockerfile }}
+          description: ${{ matrix.image.description }}
+          apt_upgrade: ${{ matrix.image.apt_upgrade_arg }}
+          image_prefix: ${{ env.IMAGE_PREFIX }}
+          registry: ${{ env.REGISTRY }}
+          tag_source: ${{ matrix.image.tag_source }}
+          rc_version: ${{ matrix.image.version }}
+          branch: ${{ matrix.image.branch }}
+          inputs_key: ${{ matrix.image.inputs_key }}
+          publish: ${{ matrix.image.publish }}
+          build_platforms: ${{ env.PLATFORMS }}
+          username: ${{ secrets.REGISTRY_USERNAME || github.actor }}
+          password: ${{ secrets.REGISTRY_PASSWORD || secrets.GITHUB_TOKEN }}
+
+  # Dependents build against a published base version (resolved to a digest by resolve), never
+  # one built in this run, so they do not wait for the base job.
+  dependent:
+    # Fixed prefix: Gitea names jobs before resolve's matrix exists, so the image part can be blank.
+    name: dependent ${{ matrix.image.name }}
+    needs: resolve
+    if: needs.resolve.outputs.dependent != '[]' && needs.resolve.outputs.dependent != ''
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ${{ fromJSON(needs.resolve.outputs.dependent) }}
+    steps:
+      - uses: actions/checkout@v4
+      # An empty digest means the pinned base is not in this registry. Fail the image that would
+      # publish; skip it on a pull request, where the base release may not be cut yet.
+      - name: Check the base pin
+        if: matrix.image.base_digest == ''
+        env:
+          PIN: ${{ matrix.image.from }}:${{ matrix.image.base_version }}
+          PUBLISH: ${{ matrix.image.publish }}
+        run: |
+          if [ "$PUBLISH" = true ]; then
+            echo "::error::$PIN is not in $REGISTRY; release it first (scripts/release.sh ${PIN%%:*} ${PIN#*:})"
+            exit 1
+          fi
+          echo "::warning::$PIN is not in $REGISTRY yet; skipping this image"
+      - uses: ./.github/actions/build-image
+        if: matrix.image.base_digest != ''
+        with:
+          image_name: ${{ matrix.image.name }}
+          dockerfile: ${{ matrix.image.dockerfile }}
+          description: ${{ matrix.image.description }}
+          apt_upgrade: ${{ matrix.image.apt_upgrade_arg }}
+          image_prefix: ${{ env.IMAGE_PREFIX }}
+          registry: ${{ env.REGISTRY }}
+          tag_source: ${{ matrix.image.tag_source }}
+          rc_version: ${{ matrix.image.version }}
+          branch: ${{ matrix.image.branch }}
+          inputs_key: ${{ matrix.image.inputs_key }}
+          publish: ${{ matrix.image.publish }}
+          base_name: ${{ matrix.image.base_name }}
+          base_ref: ${{ matrix.image.base_ref }}
+          base_digest: ${{ matrix.image.base_digest }}
+          build_platforms: ${{ env.PLATFORMS }}
+          username: ${{ secrets.REGISTRY_USERNAME || github.actor }}
+          password: ${{ secrets.REGISTRY_PASSWORD || secrets.GITHUB_TOKEN }}
+
+  # A release tag builds nothing: it promotes the image main built from the same inputs.
+  release:
+    needs: resolve
+    if: needs.resolve.outputs.release_publish == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.REGISTRY_USERNAME || github.actor }}
+          password: ${{ secrets.REGISTRY_PASSWORD || secrets.GITHUB_TOKEN }}
+      - name: Promote
+        env:
+          IMAGE: ${{ fromJSON(needs.resolve.outputs.release).image }}
+          VERSION: ${{ fromJSON(needs.resolve.outputs.release).version }}
+          KEY: ${{ fromJSON(needs.resolve.outputs.release).key }}
+          REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME || github.actor }}
+          REGISTRY_PASSWORD: ${{ secrets.REGISTRY_PASSWORD || secrets.GITHUB_TOKEN }}
+        run: bash scripts/promote.sh "$IMAGE_PREFIX" "$IMAGE" "$VERSION" "$KEY"
+      # The release as a workspace gets it: pulled fresh from the registry, run with an empty home.
+      - name: Smoke test the release with an empty home
+        env:
+          IMAGE: ${{ fromJSON(needs.resolve.outputs.release).image }}
+          VERSION: ${{ fromJSON(needs.resolve.outputs.release).version }}
+        run: |
+          if bash scripts/smoke-empty-home.sh --has "$IMAGE"; then
+            docker pull --platform linux/amd64 "$IMAGE_PREFIX-$IMAGE:$VERSION"
+            status=0
+            bash scripts/smoke-empty-home.sh "$IMAGE" "$IMAGE_PREFIX-$IMAGE:$VERSION" || status=$?
+            # The runner's Docker daemon outlives the job, and these images run to gigabytes.
+            docker image rm -f "$IMAGE_PREFIX-$IMAGE:$VERSION" || true
+            exit "$status"
+          fi

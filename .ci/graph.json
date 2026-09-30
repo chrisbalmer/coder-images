@@ -1,0 +1,20 @@
+{
+  "defaults": {
+    "publish_repositories": ["chrisbalmer/coder-images"],
+    "consumers": [
+      "README.md", "LICENSE", ".gitignore", "scripts/",
+      ".github/workflows/", ".ci/smoke/"
+    ],
+    "catch_all": [".dockerignore", ".ci/graph.json", ".github/actions/build-image/action.yml"]
+  },
+  "images": {
+    "base": {"description": "Foundation image for Coder workspaces", "apt_upgrade": true},
+    "golang": {"from": "base", "description": "Go development environment"},
+    "app": {"from": "golang", "description": "Go and React application development: golang plus pnpm and Helm"},
+    "cortex": {"from": "base", "description": "Palo Alto Cortex (XSOAR/XSIAM) development environment"},
+    "infra": {"from": "base", "description": "Infrastructure tools: Terraform, Terragrunt, Ansible, Helm, Flux, Talos and Cilium CLIs"},
+    "ubuntu-desktop": {"from": "base", "description": "Ubuntu with a desktop environment for Coder workspaces"},
+    "podman": {"description": "Podman container runtime for Coder workspaces"},
+    "kali-desktop": {"description": "Kali Linux desktop for Coder workspaces", "apt_upgrade": true}
+  }
+}
