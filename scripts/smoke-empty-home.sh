@@ -38,7 +38,8 @@ mysql --version
 command -v nc
 gh --version
 tea --version
-fj version'
+fj version
+gitea-mcp -version'
 GOLANG='go version
 golangci-lint --version
 goreleaser --version

@@ -122,7 +122,9 @@ RUN sed -i 's/\/bin\/bash/\/usr\/bin\/zsh/g' /etc/passwd && \
 # Tools the workspace templates rely on: kubectl (startup scripts wait on in-namespace services
 # and read their secrets), yq, uv (next to Python 3), and mc for S3-compatible object storage.
 # The Postgres and MySQL clients come from apt above. gh, tea and fj are the GitHub, Gitea and
-# Forgejo CLIs; tea and fj publish no checksum files, so their lines were recorded on download. Each is pinned and must
+# Forgejo CLIs; tea and fj publish no checksum files, so their lines were recorded on download.
+# gitea-mcp is the Gitea/Forgejo MCP server; the image only ships the binary, and whatever sets
+# up the AI tools configures it. Each is pinned and must
 # have a line in checksums.sha256: `--ignore-missing` alone would pass a file with no line, so
 # the loop refuses one first. mc is archived upstream; this is its last release, and it gets no
 # further fixes. ripgrep and fd come from apt above; Ubuntu installs fd as `fdfind`.
@@ -133,9 +135,10 @@ ARG MC_RELEASE=RELEASE.2025-08-13T08-35-41Z
 ARG GH_VERSION=2.102.0
 ARG TEA_VERSION=0.16.0
 ARG FJ_VERSION=0.6.0
+ARG GITEA_MCP_VERSION=1.8.0
 RUN case "${TARGETARCH:-amd64}" in \
-      amd64) ARCH=amd64; UV_ARCH=x86_64 ;; \
-      arm64) ARCH=arm64; UV_ARCH=aarch64 ;; \
+      amd64) ARCH=amd64; UV_ARCH=x86_64; GITEA_MCP_ARCH=x86_64 ;; \
+      arm64) ARCH=arm64; UV_ARCH=aarch64; GITEA_MCP_ARCH=arm64 ;; \
       *) echo "tools: unsupported TARGETARCH '${TARGETARCH}'" >&2; exit 1 ;; \
     esac && \
     cd /tmp && \
@@ -146,8 +149,10 @@ RUN case "${TARGETARCH:-amd64}" in \
     curl -fsSLO "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_${ARCH}.tar.gz" && \
     curl -fsSLO "https://gitea.com/gitea/tea/releases/download/v${TEA_VERSION}/tea-${TEA_VERSION}-linux-${ARCH}" && \
     curl -fsSLo "forgejo-cli-${FJ_VERSION}-${UV_ARCH}-linux.tar.gz" "https://codeberg.org/forgejo-contrib/forgejo-cli/releases/download/v${FJ_VERSION}/forgejo-cli-${UV_ARCH}-linux.tar.gz" && \
+    curl -fsSLo "gitea-mcp-${GITEA_MCP_VERSION}-linux-${GITEA_MCP_ARCH}.tar.gz" "https://gitea.com/gitea/gitea-mcp/releases/download/v${GITEA_MCP_VERSION}/gitea-mcp_Linux_${GITEA_MCP_ARCH}.tar.gz" && \
     for f in "kubectl-${ARCH}" "yq_linux_${ARCH}" "uv-${UV_ARCH}-unknown-linux-gnu.tar.gz" "mc.linux-${ARCH}.${MC_RELEASE}" \
-             "gh_${GH_VERSION}_linux_${ARCH}.tar.gz" "tea-${TEA_VERSION}-linux-${ARCH}" "forgejo-cli-${FJ_VERSION}-${UV_ARCH}-linux.tar.gz"; do \
+             "gh_${GH_VERSION}_linux_${ARCH}.tar.gz" "tea-${TEA_VERSION}-linux-${ARCH}" "forgejo-cli-${FJ_VERSION}-${UV_ARCH}-linux.tar.gz" \
+             "gitea-mcp-${GITEA_MCP_VERSION}-linux-${GITEA_MCP_ARCH}.tar.gz"; do \
       grep -q "  ${f}\$" /tmp/checksums.sha256 || { echo "no checksum for ${f}" >&2; exit 1; }; \
     done && \
     sha256sum --ignore-missing --check /tmp/checksums.sha256 && \
@@ -161,10 +166,12 @@ RUN case "${TARGETARCH:-amd64}" in \
     install -m 0755 "tea-${TEA_VERSION}-linux-${ARCH}" /usr/local/bin/tea && \
     tar xzf "forgejo-cli-${FJ_VERSION}-${UV_ARCH}-linux.tar.gz" fj && \
     install -m 0755 fj /usr/local/bin/fj && \
+    tar xzf "gitea-mcp-${GITEA_MCP_VERSION}-linux-${GITEA_MCP_ARCH}.tar.gz" gitea-mcp && \
+    install -m 0755 gitea-mcp /usr/local/bin/gitea-mcp && \
     ln -s /usr/bin/fdfind /usr/local/bin/fd && \
-    rm -rf kubectl-* yq_linux_* uv-* mc.linux-* gh_* tea-* forgejo-cli-* fj && \
+    rm -rf kubectl-* yq_linux_* uv-* mc.linux-* gh_* tea-* forgejo-cli-* fj gitea-mcp* && \
     kubectl version --client && yq --version && uv --version && mc --version && fd --version && rg --version && \
-    gh --version && tea --version && fj version && psql --version && mysql --version && \
+    gh --version && tea --version && fj version && gitea-mcp -version && psql --version && mysql --version && \
     command -v nc
 
 # Set the locale
