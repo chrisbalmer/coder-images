@@ -3,7 +3,7 @@
     "publish_repositories": ["chrisbalmer/coder-images"],
     "consumers": [
       "README.md", "LICENSE", ".gitignore", "scripts/",
-      ".github/workflows/", ".ci/smoke/"
+      ".github/workflows/", ".github/dependabot.yml", ".ci/smoke/"
     ],
     "catch_all": [".dockerignore", ".ci/graph.json", ".github/actions/build-image/action.yml"]
   },

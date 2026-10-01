@@ -433,6 +433,18 @@ class ReleaseScriptTests(RepoTest):
         out = self.release("cortex", "9.9.9", RELEASE_TAGS_FILE="", REGISTRY="host.invalid")
         self.assertRefused(out, "could not check")
 
+    def test_the_owner_defaults_to_the_remote_s_owner(self):
+        # The github remote wins over origin, as it does for the push; IMAGE_OWNER overrides both.
+        remote = os.path.join(self.tmp, "Some-Owner", "coder-images.git")
+        self.repo.git("clone", "-q", "--bare", self.repo.path, remote)
+        self.repo.git("remote", "add", "github", remote)
+        self.published(self.built("cortex"))
+        out = self.release("cortex", "2.1.0", IMAGE_OWNER="")  # CI's workflow env sets it
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertIn(f"promotes ghcr.io/some-owner/coder-images-cortex:{self.built('cortex')}", out.stdout)
+        out = self.release("cortex", "2.1.0", IMAGE_OWNER="Other")
+        self.assertIn("promotes ghcr.io/other/coder-images-cortex:", out.stdout)
+
     def test_only_the_tip_of_main_is_released(self):
         self.published(self.built("base"))
         self.repo.git("checkout", "-q", "-b", "side")
@@ -450,13 +462,26 @@ class ReleaseScriptTests(RepoTest):
 class PromoteTests(RepoTest):
     """scripts/promote.sh, with a stand-in docker that records what it was asked to do."""
 
-    def promote(self, version: str, published: list[str]) -> tuple[subprocess.CompletedProcess, str]:
+    def promote(self, version: str, published: list[str],
+                manifests: dict[str, list[str]] | None = None) -> tuple[subprocess.CompletedProcess, str]:
+        """Run promote.sh; `manifests` maps a tag to the platform digests its index lists."""
         bin_dir = os.path.join(self.tmp, "bin")
+        index_dir = os.path.join(self.tmp, "indexes")
         os.makedirs(bin_dir, exist_ok=True)
+        os.makedirs(index_dir, exist_ok=True)
+        for tag, digests in (manifests or {}).items():
+            with open(os.path.join(index_dir, f"{tag}.json"), "w", encoding="utf-8") as handle:
+                json.dump({"manifests": [{"digest": d} for d in digests]}, handle)
         log = os.path.join(self.tmp, "docker.log")
+        with open(log, "w", encoding="utf-8"):
+            pass
         with open(os.path.join(bin_dir, "docker"), "w", encoding="utf-8") as handle:
+            # --raw answers from indexes/<tag>.json; the reference is the last argument.
             handle.write(f'#!/bin/sh\necho "$*" >> {log}\n'
-                         'case "$*" in *--format*) echo sha256:abc ;; esac\n')
+                         'case "$*" in\n'
+                         f'  *--raw*) for arg; do ref=$arg; done; cat "{index_dir}/${{ref##*:}}.json" || exit 1 ;;\n'
+                         '  *--format*) echo sha256:abc ;;\n'
+                         'esac\n')
         os.chmod(os.path.join(bin_dir, "docker"), 0o755)
         tags = os.path.join(self.tmp, "tags")
         with open(tags, "w", encoding="utf-8") as handle:
@@ -466,6 +491,26 @@ class PromoteTests(RepoTest):
                                                  "RELEASE_TAGS_FILE": tags})
         with open(log, encoding="utf-8") as handle:
             return out, handle.read()
+
+    def test_a_re_run_of_the_same_release_only_re_applies_the_floating_tags(self):
+        published = ["2.0.0", "2.1.0", "2.1", "2", "latest", "src-abc"]
+        out, log = self.promote("2.1.0", published,
+                                {"2.1.0": ["sha256:arm", "sha256:amd"], "src-abc": ["sha256:amd", "sha256:arm"]})
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("re-applying only its floating tags", out.stdout)
+        create = next(line for line in log.splitlines() if " create " in line)
+        self.assertNotIn("--annotation", create)
+        self.assertNotIn("--tag registry.example/o/coder-images-cortex:2.1.0", create)
+        self.assertIn("--tag registry.example/o/coder-images-cortex:latest", create)
+        self.assertTrue(create.endswith("coder-images-cortex:2.1.0"), create)
+
+    def test_a_published_version_is_never_repointed_at_a_moved_source(self):
+        # src-<key> can move under the same key (an upgrade_base rebuild); the version must not.
+        out, log = self.promote("2.1.0", ["2.1.0", "latest", "src-abc"],
+                                {"2.1.0": ["sha256:old"], "src-abc": ["sha256:new"]})
+        self.assertNotEqual(out.returncode, 0)
+        self.assertIn("already published with different images", out.stdout)
+        self.assertNotIn(" create ", log)
 
     def test_a_release_moves_only_the_floating_tags_it_heads(self):
         out, log = self.promote("2.0.1", ["2.0.0", "2.1.0", "src-abc"])
@@ -521,10 +566,12 @@ class ResolveTests(RepoTest):
     def resolve(self, **env) -> tuple[subprocess.CompletedProcess, dict]:
         output = os.path.join(self.tmp, "output")
         open(output, "w").close()
-        base = {"EVENT": "push", "BEFORE": self.repo.git("rev-parse", "HEAD^"), "PR_BASE_SHA": "",
+        base = {"EVENT": "push", "PR_BASE_SHA": "",
                 "REF": "refs/heads/main", "REF_NAME": "main", "DEFAULT_BRANCH": "main",
                 "REGISTRY": "host.invalid", "OWNER": "o", "REPOSITORY": CANONICAL,
                 "GITHUB_OUTPUT": output}
+        if "BEFORE" not in env:  # a root commit has no HEAD^
+            base["BEFORE"] = self.repo.git("rev-parse", "HEAD^")
         out = self.repo.run("bash", "scripts/ci-resolve.sh", env={**base, **env})
         with open(output, encoding="utf-8") as handle:
             values = dict(line.split("=", 1) for line in handle.read().splitlines() if "=" in line)
@@ -561,6 +608,33 @@ class ResolveTests(RepoTest):
         self.assertEqual(out.returncode, 0, out.stderr)
         dependent = json.loads(values["dependent"])
         self.assertEqual([(d["name"], d["base_digest"]) for d in dependent], [("cortex", "")])
+
+    def test_a_repository_s_first_commit_on_main_builds_every_image(self):
+        # A new branch, or main pushed with history, has no diff and builds nothing; a root commit
+        # on the default branch has nothing published yet either, so it builds everything.
+        new_branch = {"BEFORE": "0" * 40}
+        for env in ({"REF": "refs/heads/feature", "REF_NAME": "feature"}, {}):
+            out, values = self.resolve(**new_branch, **env)
+            self.assertEqual(out.returncode, 0, out.stderr)
+            self.assertEqual((values["base"], values["standalone"], values["dependent"]), ("", "[]", "[]"), env)
+        self.repo.git("checkout", "-q", "--orphan", "first")
+        self.repo.git("commit", "-q", "-m", "first")
+        out, values = self.resolve(**new_branch)
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertEqual(json.loads(values["base"])["name"], "base")
+        self.assertEqual(sorted(e["name"] for e in json.loads(values["standalone"])), ["kali-desktop", "podman"])
+        self.assertEqual(sorted(e["name"] for e in json.loads(values["dependent"])), sorted(DEPENDENTS))
+        # ...but only on the default branch.
+        out, values = self.resolve(**new_branch, REF="refs/heads/feature", REF_NAME="feature")
+        self.assertEqual(values["base"], "")
+
+    def test_a_mixed_case_owner_publishes_under_a_lowercase_prefix(self):
+        self.repo.commit("images/app/Dockerfile")
+        out, values = self.resolve(OWNER="Some-Owner")
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertEqual(values["image_prefix"], "host.invalid/some-owner/coder-images")
+        [app] = json.loads(values["dependent"])
+        self.assertTrue(app["base_name"].startswith("host.invalid/some-owner/coder-images-golang:"))
 
     def test_a_tag_push_is_a_release(self):
         tags = os.path.join(self.tmp, "tags")

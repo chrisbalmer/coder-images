@@ -36,15 +36,17 @@ concurrency:
   group: publish-${{ (github.event_name == 'pull_request' || startsWith(github.ref, 'refs/tags/')) && github.ref || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+# Read-only by default; only the jobs that push to the registry get packages: write.
 permissions:
   contents: read
-  packages: write
 
 env:
   DEFAULT_BRANCH: main
   REGISTRY: ${{ vars.REGISTRY || 'ghcr.io' }}
+  # Expressions cannot lowercase, and OCI repository names must be lowercase, so a mixed-case
+  # owner would fail every push. resolve lowercases it and hands the jobs image_prefix
+  # (<registry>/<owner>/coder-images).
   IMAGE_OWNER: ${{ vars.IMAGE_OWNER || github.repository_owner }}
-  IMAGE_PREFIX: ${{ vars.REGISTRY || 'ghcr.io' }}/${{ vars.IMAGE_OWNER || github.repository_owner }}/coder-images
   # Repository variable BUILD_ARM64=false builds linux/amd64 only (arm64 is emulated, and slow,
   # on amd64 runners). Unset or anything else builds both.
   PLATFORMS: ${{ vars.BUILD_ARM64 == 'false' && 'linux/amd64' || 'linux/amd64,linux/arm64' }}
@@ -53,22 +55,23 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Validate graph, scripts and pipelines
         run: bash scripts/validate-ci.sh
 
   # Builds .ci/smoke/Dockerfile through the real shared action, so a broken action fails review.
+  # It waits for resolve only for the image prefix, and never pushes, so it needs no write access.
   smoke:
-    needs: validate
+    needs: resolve
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: ./.github/actions/build-image
         with:
           image_name: ci-smoke
           dockerfile: .ci/smoke/Dockerfile
-          image_prefix: ${{ env.IMAGE_PREFIX }}
+          image_prefix: ${{ needs.resolve.outputs.image_prefix }}
           registry: ${{ env.REGISTRY }}
           tag_source: skip
           publish: 'false'
@@ -80,7 +83,12 @@ jobs:
   resolve:
     needs: validate
     runs-on: ubuntu-latest
+    # Reads tags and base digests from the registry; never writes.
+    permissions:
+      contents: read
+      packages: read
     outputs:
+      image_prefix: ${{ steps.plan.outputs.image_prefix }}
       base: ${{ steps.plan.outputs.base }}
       standalone: ${{ steps.plan.outputs.standalone }}
       dependent: ${{ steps.plan.outputs.dependent }}
@@ -88,7 +96,7 @@ jobs:
       release_publish: ${{ steps.plan.outputs.release_publish }}
     steps:
       # Full history: the diff needs the compare commit, and a release checks main's ancestry.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
       - name: Plan
@@ -113,15 +121,18 @@ jobs:
     needs: resolve
     if: needs.resolve.outputs.base != ''
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: ./.github/actions/build-image
         with:
           image_name: base
           dockerfile: ${{ fromJSON(needs.resolve.outputs.base).dockerfile }}
           description: ${{ fromJSON(needs.resolve.outputs.base).description }}
           apt_upgrade: ${{ fromJSON(needs.resolve.outputs.base).apt_upgrade_arg }}
-          image_prefix: ${{ env.IMAGE_PREFIX }}
+          image_prefix: ${{ needs.resolve.outputs.image_prefix }}
           registry: ${{ env.REGISTRY }}
           tag_source: ${{ fromJSON(needs.resolve.outputs.base).tag_source }}
           rc_version: ${{ fromJSON(needs.resolve.outputs.base).version }}
@@ -138,19 +149,22 @@ jobs:
     needs: resolve
     if: needs.resolve.outputs.standalone != '[]' && needs.resolve.outputs.standalone != ''
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     strategy:
       fail-fast: false
       matrix:
         image: ${{ fromJSON(needs.resolve.outputs.standalone) }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: ./.github/actions/build-image
         with:
           image_name: ${{ matrix.image.name }}
           dockerfile: ${{ matrix.image.dockerfile }}
           description: ${{ matrix.image.description }}
           apt_upgrade: ${{ matrix.image.apt_upgrade_arg }}
-          image_prefix: ${{ env.IMAGE_PREFIX }}
+          image_prefix: ${{ needs.resolve.outputs.image_prefix }}
           registry: ${{ env.REGISTRY }}
           tag_source: ${{ matrix.image.tag_source }}
           rc_version: ${{ matrix.image.version }}
@@ -169,12 +183,15 @@ jobs:
     needs: resolve
     if: needs.resolve.outputs.dependent != '[]' && needs.resolve.outputs.dependent != ''
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     strategy:
       fail-fast: false
       matrix:
         image: ${{ fromJSON(needs.resolve.outputs.dependent) }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       # An empty digest means the pinned base is not in this registry. Fail the image that would
       # publish; skip it on a pull request, where the base release may not be cut yet.
       - name: Check the base pin
@@ -195,7 +212,7 @@ jobs:
           dockerfile: ${{ matrix.image.dockerfile }}
           description: ${{ matrix.image.description }}
           apt_upgrade: ${{ matrix.image.apt_upgrade_arg }}
-          image_prefix: ${{ env.IMAGE_PREFIX }}
+          image_prefix: ${{ needs.resolve.outputs.image_prefix }}
           registry: ${{ env.REGISTRY }}
           tag_source: ${{ matrix.image.tag_source }}
           rc_version: ${{ matrix.image.version }}
@@ -214,16 +231,20 @@ jobs:
     needs: resolve
     if: needs.resolve.outputs.release_publish == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ secrets.REGISTRY_USERNAME || github.actor }}
           password: ${{ secrets.REGISTRY_PASSWORD || secrets.GITHUB_TOKEN }}
       - name: Promote
         env:
+          IMAGE_PREFIX: ${{ needs.resolve.outputs.image_prefix }}
           IMAGE: ${{ fromJSON(needs.resolve.outputs.release).image }}
           VERSION: ${{ fromJSON(needs.resolve.outputs.release).version }}
           KEY: ${{ fromJSON(needs.resolve.outputs.release).key }}
@@ -233,7 +254,8 @@ jobs:
       # The release as a workspace gets it: pulled fresh from the registry, run with an empty home.
       - name: Smoke test the release with an empty home
         env:
-          IMAGE: ${{ fromJSON(needs.resolve.outputs.release).image }}
+          IMAGE_PREFIX: ${{ needs.resolve.outputs.image_prefix }}
+          IMAGE:${{ fromJSON(needs.resolve.outputs.release).image }}
           VERSION: ${{ fromJSON(needs.resolve.outputs.release).version }}
         run: |
           if bash scripts/smoke-empty-home.sh --has "$IMAGE"; then

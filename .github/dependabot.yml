@@ -1,0 +1,10 @@
+# Actions are pinned to commit SHAs; this keeps the pins (and their version comments) current.
+# "/" covers .github/workflows; the composite action's directory has to be listed on its own.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directories:
+      - /
+      - /.github/actions/build-image
+    schedule:
+      interval: weekly
