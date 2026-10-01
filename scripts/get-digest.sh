@@ -8,7 +8,7 @@
 #
 # Options (any position):
 #   --registry <host>   default ghcr.io
-#   --owner <name>      default chrisbalmer
+#   --owner <name>      default the owner in the github or origin remote's URL
 #   --prefix <name>     default coder-images
 #
 # Examples:
@@ -29,8 +29,24 @@ usage() {
     echo "Available images: $("$PY" scripts/ci-graph.py images | tr -d '[]"' | tr ',' ' ')"
 }
 
+# The owner in the github (else origin) remote's URL, as release.sh picks its remote:
+# git@host:Owner/repo.git, https://host/Owner/repo and ssh://git@host:port/Owner/repo.git.
+remote_owner() {
+    local remote url
+    for remote in github origin; do
+        url=$(git remote get-url "$remote" 2> /dev/null) || continue
+        url=${url%/}
+        url=${url%.git}
+        url=${url%/*}
+        url=${url##*[/:]}
+        [ -n "$url" ] && printf '%s\n' "$url"
+        return
+    done
+    return 1
+}
+
 REGISTRY=${REGISTRY:-ghcr.io}
-OWNER=${IMAGE_OWNER:-chrisbalmer}
+OWNER=${IMAGE_OWNER:-$(remote_owner || echo chrisbalmer)}
 PREFIX=coder-images
 MODE=image
 POSITIONAL=()
@@ -46,6 +62,7 @@ while [ $# -gt 0 ]; do
         *)          POSITIONAL+=("$1"); shift ;;
     esac
 done
+OWNER=$(tr '[:upper:]' '[:lower:]' <<<"$OWNER")  # registry paths are lowercase, as in CI
 
 if [ "$MODE" = pins ]; then
     "$PY" scripts/ci-graph.py pins \

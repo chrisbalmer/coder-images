@@ -21,18 +21,26 @@ for var in REGISTRY OWNER REPOSITORY; do
         exit 1
     fi
 done
+# OCI repository names are lowercase: a fork owned by MyName publishes to ghcr.io/myname.
+OWNER=$(tr '[:upper:]' '[:lower:]' <<<"$OWNER")
+PREFIX="$REGISTRY/$OWNER/coder-images"
 
 has_commit() { git cat-file -e "${1}^{commit}" 2> /dev/null; }
 
 # What to diff against. A tag push and a brand new branch have none, and that means "no diff":
-# guessing HEAD^ would rebuild and republish the previous commit's images.
+# guessing HEAD^ would rebuild and republish the previous commit's images. The one exception is
+# a repository's first commit on the default branch: there is nothing to diff against, and
+# nothing published yet, so it builds every image.
 COMPARE=''
+FIRST_COMMIT=false
 case "$EVENT" in
     pull_request) COMPARE=${PR_BASE_SHA:-} ;;
     workflow_dispatch) if has_commit HEAD^; then COMPARE=HEAD^; fi ;;
     push)
         if [ -n "${BEFORE:-}" ] && [ "$BEFORE" != 0000000000000000000000000000000000000000 ]; then
             COMPARE=$BEFORE
+        elif [ "$REF" = "refs/heads/$DEFAULT_BRANCH" ] && ! has_commit HEAD^; then
+            FIRST_COMMIT=true
         fi ;;
 esac
 # The compare commit can vanish under a force push; degrade to the last commit.
@@ -54,7 +62,7 @@ ARGS=(--event "$EVENT" --ref "$REF" --ref-name "$REF_NAME" --default-branch "$DE
 if [ "${INPUT_UPGRADE_BASE:-}" = true ]; then ARGS+=(--upgrade-base true); fi
 if [ -n "${INPUT_IMAGES:-}" ]; then
     ARGS+=(--images "$INPUT_IMAGES")
-elif [ "${INPUT_ALL:-}" = true ]; then
+elif [ "${INPUT_ALL:-}" = true ] || [ "$FIRST_COMMIT" = true ]; then
     ARGS+=(--all)
 elif [ -n "$COMPARE" ]; then
     ARGS+=(--changed-base "$COMPARE")
@@ -83,7 +91,7 @@ fi
 # Give each dependent its base reference, pinned by digest, so the build job has nothing left
 # to look up. An empty base_digest means the pin did not resolve: the dependent job fails if it
 # would publish, and is skipped on a pull request, where the base release may not be cut yet.
-DEPENDENT=$(jq -c --argjson map "$MAP" --arg prefix "$REGISTRY/$OWNER/coder-images" '
+DEPENDENT=$(jq -c --argjson map "$MAP" --arg prefix "$PREFIX" '
     .dependent | map(
         (.from + ":" + .base_version) as $pin
         | ($map[$pin] // "") as $digest
@@ -93,6 +101,7 @@ DEPENDENT=$(jq -c --argjson map "$MAP" --arg prefix "$REGISTRY/$OWNER/coder-imag
 ' <<<"$PLAN")
 
 {
+    printf 'image_prefix=%s\n' "$PREFIX"
     printf 'base=%s\n' "$(jq -c '.base // empty' <<<"$PLAN")"
     printf 'standalone=%s\n' "$(jq -c '.standalone' <<<"$PLAN")"
     printf 'dependent=%s\n' "$DEPENDENT"

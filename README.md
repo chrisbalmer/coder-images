@@ -18,7 +18,7 @@ built for amd64 and arm64.
 | `ubuntu-desktop` | `base` | Ubuntu with desktop environment |
 | `podman` | Fedora | Podman container runtime |
 | `kali-desktop` | Kali | Kali Linux desktop |
-| `terraform` | `base` | **Deprecated**, replaced by `infra`. No new tags are published; existing tags stay in the registries for workspaces that still use them |
+| `terraform` | `base` | **Deprecated**, replaced by `infra`. No new tags are published; existing tags stay published for workspaces that still use them |
 
 Every image ends as the `coder` user (uid/gid 1000). `golang`, `app`, `infra` and `cortex` run
 each of their tools' `--version` as that user during the build, on every architecture, so a tool
@@ -96,7 +96,9 @@ Any tracked file that is not owned by an image, a consumer or a catch-all fails
 
 CI repeats the "not already published" check and requires the tagged commit to be on `main`, so a
 hand-pushed or moved tag cannot overwrite a release. **Re-run jobs** on a failed release run is
-allowed to find its own version already published.
+allowed to find its own version already published: if it holds the same images as `src-<key>`,
+only the floating tags are re-applied; if `src-<key>` has moved since, the re-run fails rather
+than move the version.
 
 Protect release tags too: add a tag ruleset for `*-v*.*.*` that blocks updates and deletions
 (GitHub: **Settings → Rules → Rulesets → New tag ruleset**; the equivalent on any other forge
@@ -204,7 +206,7 @@ To publish somewhere else, set these on the repository (no workflow edit needed)
 | Name | Kind | Default |
 |---|---|---|
 | `REGISTRY` | variable | `ghcr.io` |
-| `IMAGE_OWNER` | variable | the repository owner |
+| `IMAGE_OWNER` | variable | the repository owner (lowercased, as registry paths must be) |
 | `REGISTRY_USERNAME` | secret | the workflow actor |
 | `REGISTRY_PASSWORD` | secret | the workflow token |
 
@@ -230,7 +232,9 @@ REGISTRY_USERNAME=... REGISTRY_PASSWORD=... \
 ```
 
 Each forge promotes its own build of the same commit, so the two registries carry the same
-versions without replicating between them.
+versions without replicating between them. Unset, `IMAGE_OWNER` in `release.sh` and
+`get-digest.sh` is the owner in the URL of the `github` remote, else `origin` (lowercased); set it
+whenever the registry owner differs from that, as for `library` above.
 
 ## Consuming images
 
@@ -274,10 +278,13 @@ The build context is the repo root; `.dockerignore` keeps CI files out of it.
 A dependent can't build until the base version it pins is **released** in the registry it builds
 from, so a registry with none of these images yet (a new fork, a private mirror) fills in order:
 
-1. The first push to `main` builds every image and publishes `src-<key>` tags. The dependents
-   fail with "not in <registry>"; `base` and the standalone images still build.
+1. Build every image on `main`. A repository's first commit does this by itself; a fork or a
+   mirror arrives with history, and pushing it builds nothing, so run the workflow on `main` by
+   hand with **all** checked. Every image publishes its `src-<key>` tags except the dependents,
+   which fail with "not in <registry>"; `base` and the standalone images still build.
 2. `./scripts/release.sh base <version>` at the version the dependents pin.
-3. Re-run **all jobs** of step 1's run; `cortex`, `infra` and `golang` now build.
+3. Re-run **all jobs** of step 1's run; `cortex`, `infra`, `golang` and `ubuntu-desktop` now
+   build.
 4. Release `golang`, then re-run again so `app` builds on it. Release the rest.
 
 ## The 1.x images

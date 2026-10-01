@@ -10,8 +10,9 @@
 # the image as it is at HEAD; the version is X.Y.Z, at least 2.0.0 and not already published.
 #
 # Environment:
-#   REGISTRY / IMAGE_OWNER / NAME_PREFIX   where to look (default ghcr.io/chrisbalmer/coder-images);
-#                                          the same names the publish workflow uses
+#   REGISTRY / IMAGE_OWNER / NAME_PREFIX   where to look (default ghcr.io/<owner>/coder-images,
+#                                          the owner taken from the remote's URL); the same
+#                                          names the publish workflow uses
 #   REGISTRY_USERNAME / REGISTRY_PASSWORD               for a private registry
 #   RELEASE_TAGS_FILE   read published tags from this file instead of the registry
 
@@ -20,7 +21,6 @@ set -euo pipefail
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 REGISTRY=${REGISTRY:-ghcr.io}
-OWNER=${IMAGE_OWNER:-chrisbalmer}
 PREFIX=${NAME_PREFIX:-coder-images}
 REMOTE=""
 DRY_RUN=false
@@ -28,6 +28,17 @@ ARGS=()
 
 usage() { awk 'NR > 1 { if (!/^#/) exit; sub(/^# ?/, ""); print }' "$0"; }
 die() { echo "❌ $*" >&2; exit 1; }
+# The owner in a remote's URL: git@host:Owner/repo.git, https://host/Owner/repo and
+# ssh://git@host:port/Owner/repo.git all give "Owner".
+remote_owner() {
+    local url
+    url=$(git remote get-url "$1" 2> /dev/null) || return 1
+    url=${url%/}
+    url=${url%.git}
+    url=${url%/*}
+    url=${url##*[/:]}
+    [ -n "$url" ] && printf '%s\n' "$url"
+}
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -53,6 +64,8 @@ if [ -z "$REMOTE" ]; then
     done
 fi
 [ -n "$REMOTE" ] || die "no git remote named github or origin; pass --remote <name>"
+OWNER=${IMAGE_OWNER:-$(remote_owner "$REMOTE" || echo chrisbalmer)}
+OWNER=$(tr '[:upper:]' '[:lower:]' <<<"$OWNER")  # registry paths are lowercase, as in CI
 git fetch -q "$REMOTE" main || die "cannot fetch ${REMOTE}/main"
 [ "$(git rev-parse HEAD)" = "$(git rev-parse "${REMOTE}/main")" ] \
     || die "HEAD is not the tip of ${REMOTE}/main; run: git pull --ff-only ${REMOTE} main"
