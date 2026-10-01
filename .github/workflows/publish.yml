@@ -255,7 +255,7 @@ jobs:
       - name: Smoke test the release with an empty home
         env:
           IMAGE_PREFIX: ${{ needs.resolve.outputs.image_prefix }}
-          IMAGE:${{ fromJSON(needs.resolve.outputs.release).image }}
+          IMAGE: ${{ fromJSON(needs.resolve.outputs.release).image }}
           VERSION: ${{ fromJSON(needs.resolve.outputs.release).version }}
         run: |
           if bash scripts/smoke-empty-home.sh --has "$IMAGE"; then
