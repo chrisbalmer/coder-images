@@ -8,3 +8,7 @@ updates:
       - /.github/actions/build-image
     schedule:
       interval: weekly
+    # One PR for every action bump: each change to the composite action rebuilds every image.
+    groups:
+      github-actions:
+        patterns: ["*"]
