@@ -2,7 +2,7 @@
 # against the digest of exactly this golang version, so `docker build` and CI resolve the same
 # layers. Changing BASE_VERSION is how you adopt a new golang release: a one-line, reviewable diff.
 ARG BASE_NAME=ghcr.io/chrisbalmer/coder-images-golang
-ARG BASE_VERSION=2.3.0
+ARG BASE_VERSION=2.4.0
 # CI overrides BASE_REF with <name>@<digest>; locally it resolves to the pin above.
 ARG BASE_REF=${BASE_NAME}:${BASE_VERSION}
 # Digest CI actually resolved BASE_VERSION to; empty for a local build.
