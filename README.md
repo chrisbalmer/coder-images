@@ -15,9 +15,9 @@ built for amd64 and arm64.
 | `app` | `golang` | Go and React apps: `golang` plus pnpm and Helm (Node.js 22 comes from `base`) |
 | `infra` | `base` | Infrastructure tools: Terraform, Terragrunt, Ansible, Helm, kustomize, Flux, talosctl, Cilium CLI, kubeconform |
 | `cortex` | `base` | Palo Alto Cortex (XSOAR/XSIAM) development |
-| `ubuntu-desktop` | `base` | Ubuntu with desktop environment |
+| `ubuntu-desktop` | `base` | Xfce desktop with KasmVNC and Firefox (KasmVNC's Ubuntu 24.04 build until it ships one for 26.04) |
 | `podman` | Fedora | Podman container runtime |
-| `kali-desktop` | Kali | Kali Linux desktop |
+| `kali-desktop` | Kali | Xfce desktop with KasmVNC, plus a security-lab toolset: reverse engineering, forensics, crypto/stego, web, exploitation, passwords, Ghidra, YARA, pefile, pwntools |
 | `terraform` | `base` | **Deprecated**, replaced by `infra`. No new tags are published; existing tags stay published for workspaces that still use them |
 
 Every image ends as the `coder` user (uid/gid 1000). `golang`, `app`, `infra` and `cortex` run
@@ -37,7 +37,7 @@ from the image, so anything an image installs or configures there is hidden. Too
   default into the home directory (`pip --user`, `pipx`, `uv tool`, `npm -g`, `git config
   --global`). Runtime defaults for user data are allowed by name: `GOPATH` and `GOBIN`
   (`HOME_ALLOWED` in the script).
-- `scripts/smoke-empty-home.sh` runs `base`, `golang`, `app`, `infra` and `cortex` with an empty
+- `scripts/smoke-empty-home.sh` runs `base`, `golang`, `app`, `infra`, `cortex` and both desktops with an empty
   tmpfs at `/home/coder` and checks the user, sudo and every tool. The build action runs it on
   the amd64 image before anything is pushed, and a release runs it on the image it just
   published, pulled fresh. It uses a tmpfs because Docker seeds an empty named volume from the
