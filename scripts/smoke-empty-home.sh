@@ -13,7 +13,7 @@
 
 set -euo pipefail
 
-TESTED=" base cortex golang app infra "
+TESTED=" base cortex golang app infra ubuntu-desktop kali-desktop "
 if [ "${1:-}" = --has ]; then
     [[ "$TESTED" == *" ${2:?usage: smoke-empty-home.sh --has <image name>} "* ]]
     exit
@@ -47,6 +47,11 @@ air -v
 echo "package p" | goimports
 gopls version
 dlv version'
+# Both desktops: KasmVNC (configured and started by the template's kasmvnc module) and Xfce.
+DESKTOP='command -v kasmvncserver
+/usr/bin/Xkasmvnc -version 2>&1 | grep -i kasmvnc
+id -nG | grep -qw ssl-cert
+command -v startxfce4'
 
 case "$NAME" in
     base) CHECKS=$BASE ;;
@@ -78,6 +83,17 @@ talosctl version --client --short
 cilium version --client
 kubeconform -v
 kubectl version --client' ;;
+    ubuntu-desktop) CHECKS="$BASE
+$DESKTOP"'
+firefox --version' ;;
+    kali-desktop) CHECKS="$DESKTOP"'
+git --version
+firefox-esr --version
+command -v ghidra
+r2 -v
+yara --version
+python3 -c "import pefile"
+PWNLIB_NOTERM=1 python3 -c "import pwn"' ;;
     *)
         echo "smoke-empty-home: no checks for $NAME" >&2
         exit 1 ;;
