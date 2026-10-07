@@ -23,12 +23,13 @@ ARG APT_UPGRADE=false
 # 1. The desktop: Kali core, Xfce, a browser and the basics.
 #
 # No screen locker. The coder user has no password, on purpose (access is gated by the Coder
-# session), so a lock screen locks the user out of their own desktop. Removing the locker beats
-# configuring it off: no setting in a persistent home can turn it back on. kali-desktop-xfce
-# depends on xfce4-screensaver, so that (empty) metapackage is purged with the locker; its other
-# dependencies are marked manually installed first, so `apt autoremove` keeps the desktop.
-# The apt pin keeps any later install from bringing a locker back. KasmVNC needs nothing else:
-# its X server ignores screen blanking and DPMS, and its idle timeouts default to never.
+# session), so a lock screen locks the user out of their own desktop. Kali's kali-desktop-xfce is
+# a protected package that depends on xfce4-screensaver, so the locker stays installed, but its
+# daemon is diverted away (dpkg-divert survives upgrades): the session autostart, D-Bus
+# activation (org.xfce.ScreenSaver) and xflock4 all find nothing to run. That beats configuring
+# it off, which a setting in a persistent home could undo. An apt pin keeps the other lockers
+# out of later installs. KasmVNC needs nothing else: its X server ignores screen blanking and
+# DPMS, and its idle timeouts default to never.
 RUN case "${TARGETARCH:-amd64}" in \
       amd64|arm64) ;; \
       *) echo "unsupported TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
@@ -39,12 +40,9 @@ RUN case "${TARGETARCH:-amd64}" in \
       kali-linux-${KALI_METAPACKAGE} \
       kali-desktop-${KALI_DESKTOP} \
       net-tools zsh vim curl libdatetime-perl git sudo firefox-esr iputils-ping && \
-    keep=$(dpkg-query -W -f='${Depends}, ${Recommends}\n' "kali-desktop-${KALI_DESKTOP}" | \
-      tr ',|' '\n\n' | sed -E 's/\(.*//; s/:any//; s/[[:space:]]//g' | sort -u) && \
-    apt-mark manual $(dpkg-query -W -f='${db:Status-Abbrev} ${Package}\n' $keep 2>/dev/null | \
-      awk '$1 == "ii" && $2 != "xfce4-screensaver" { print $2 }') >/dev/null && \
-    apt-get -y purge "kali-desktop-${KALI_DESKTOP}" xfce4-screensaver light-locker xscreensaver && \
-    printf 'Package: xfce4-screensaver light-locker xscreensaver mate-screensaver gnome-screensaver\nPin: version *\nPin-Priority: -1\n' \
+    dpkg-divert --local --rename --divert /usr/bin/xfce4-screensaver.disabled \
+      --add /usr/bin/xfce4-screensaver && \
+    printf 'Package: light-locker xscreensaver mate-screensaver gnome-screensaver\nPin: version *\nPin-Priority: -1\n' \
       > /etc/apt/preferences.d/no-screen-locker && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*

@@ -53,7 +53,8 @@ DESKTOP='command -v kasmvncserver
 id -nG | grep -qw ssl-cert
 command -v startxfce4
 # No screen locker: coder has no password, so a lock screen would lock the user out.
-for p in xfce4-screensaver light-locker xscreensaver; do if dpkg -s $p >/dev/null 2>&1 || command -v $p; then echo "screen locker $p is installed" >&2; exit 1; fi; done
+# (Kali keeps the xfce4-screensaver package, which its desktop metapackage needs, minus the daemon.)
+for p in xfce4-screensaver light-locker xscreensaver; do if command -v $p || test -e /usr/bin/$p; then echo "screen locker $p can run" >&2; exit 1; fi; done
 grep -qx "Pin-Priority: -1" /etc/apt/preferences.d/no-screen-locker'
 
 case "$NAME" in
@@ -90,9 +91,7 @@ kubectl version --client' ;;
 $DESKTOP"'
 firefox --version' ;;
     kali-desktop) CHECKS="$DESKTOP"'
-# kali-desktop-xfce went with the locker; apt autoremove must still keep the desktop.
-autoremove=$(apt-get -s autoremove)
-if print -r -- "$autoremove" | grep -E "^Remv (xfce4|xfce4-session|xfwm4|xfdesktop4|xfce4-panel|kali-desktop-core|qterminal|thunar) "; then exit 1; fi
+test "$(dpkg-divert --truename /usr/bin/xfce4-screensaver)" = /usr/bin/xfce4-screensaver.disabled
 git --version
 firefox-esr --version
 # ping has no file capability and NET_RAW is dropped here, so it uses an ICMP datagram socket,
