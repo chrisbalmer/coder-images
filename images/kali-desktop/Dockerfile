@@ -25,8 +25,8 @@ ARG APT_UPGRADE=false
 # No screen locker. The coder user has no password, on purpose (access is gated by the Coder
 # session), so a lock screen locks the user out of their own desktop. Removing the locker beats
 # configuring it off: no setting in a persistent home can turn it back on. kali-desktop-xfce
-# depends on xfce4-screensaver, so purging the locker removes that (empty) metapackage too; its
-# other dependencies are marked manually installed first, so `apt autoremove` keeps the desktop.
+# depends on xfce4-screensaver, so that (empty) metapackage is purged with the locker; its other
+# dependencies are marked manually installed first, so `apt autoremove` keeps the desktop.
 # The apt pin keeps any later install from bringing a locker back. KasmVNC needs nothing else:
 # its X server ignores screen blanking and DPMS, and its idle timeouts default to never.
 RUN case "${TARGETARCH:-amd64}" in \
@@ -43,7 +43,7 @@ RUN case "${TARGETARCH:-amd64}" in \
       tr ',|' '\n\n' | sed -E 's/\(.*//; s/:any//; s/[[:space:]]//g' | sort -u) && \
     apt-mark manual $(dpkg-query -W -f='${db:Status-Abbrev} ${Package}\n' $keep 2>/dev/null | \
       awk '$1 == "ii" && $2 != "xfce4-screensaver" { print $2 }') >/dev/null && \
-    apt-get -y purge xfce4-screensaver light-locker xscreensaver && \
+    apt-get -y purge "kali-desktop-${KALI_DESKTOP}" xfce4-screensaver light-locker xscreensaver && \
     printf 'Package: xfce4-screensaver light-locker xscreensaver mate-screensaver gnome-screensaver\nPin: version *\nPin-Priority: -1\n' \
       > /etc/apt/preferences.d/no-screen-locker && \
     apt-get clean && \
