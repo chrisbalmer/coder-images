@@ -44,6 +44,35 @@ from the image, so anything an image installs or configures there is hidden. Too
   image, which would hide exactly this bug. It also prints the image's layer sizes, since every
   node that runs a workspace pulls each changed layer.
 
+### Image or template module?
+
+Not everything a workspace needs belongs in an image. Agents, editors, dotfiles, git identity and
+repository clones come from modules in the Coder template instead. The rule:
+
+> **An image holds what every user of it needs, pinned and slow to change. A module holds whatever
+> depends on the user or the workspace, needs wiring into Coder, is meant to be shared with other
+> templates or other people, or changes faster than an image release is worth.**
+
+For a tool that could go either way:
+
+| Question | Image | Module |
+|---|---|---|
+| When is the value known? | At build time | At workspace creation: owner, repository, parameters, secrets |
+| How often does it change? | Rarely: a base change means a release of every child | Often: a module version bump is one line in the template |
+| Where must it live? | `/usr/local`, `/opt`, `/etc` | Under `/home/coder`, which hides anything an image puts there |
+| What does it cost per start? | Nothing; it is already in the image | Its install, on every start (the root filesystem is not persistent) |
+| What does start-up depend on? | Nothing; the image is pinned by digest and checksums are verified | The tool's download source being up and reachable |
+| Who uses it? | Everyone on that image | A per-user choice or an optional toggle |
+| Where must it run? | Workspaces on this image family | Any template, including ones that don't use these images |
+| Does it need `coder_app`, `coder_script` or `coder_env`? | No | Yes |
+
+A tool can be split across both: the binary in the image, its configuration and credentials from
+a module. A module meant for sharing should skip its install when the tool is already present, so
+an image can pre-install it to save start time without the module depending on that. It should
+install under the home directory, which persists across restarts, rather than `/usr/local`, which
+doesn't. These images are public, so nothing specific to one deployment (hostnames, tokens,
+personal configuration) goes in them; that comes from the template.
+
 ## How it works
 
 | Event | What happens |
