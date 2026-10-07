@@ -51,7 +51,11 @@ dlv version'
 DESKTOP='command -v kasmvncserver
 /usr/bin/Xkasmvnc -version 2>&1 | grep -i kasmvnc
 id -nG | grep -qw ssl-cert
-command -v startxfce4'
+command -v startxfce4
+# No screen locker: coder has no password, so a lock screen would lock the user out.
+# (Kali keeps the xfce4-screensaver package, which its desktop metapackage needs, minus the daemon.)
+for p in xfce4-screensaver light-locker xscreensaver; do if command -v $p || test -e /usr/bin/$p; then echo "screen locker $p can run" >&2; exit 1; fi; done
+grep -qx "Pin-Priority: -1" /etc/apt/preferences.d/no-screen-locker'
 
 case "$NAME" in
     base) CHECKS=$BASE ;;
@@ -87,9 +91,17 @@ kubectl version --client' ;;
 $DESKTOP"'
 firefox --version' ;;
     kali-desktop) CHECKS="$DESKTOP"'
+test "$(dpkg-divert --truename /usr/bin/xfce4-screensaver)" = /usr/bin/xfce4-screensaver.disabled
 git --version
 firefox-esr --version
+# ping has no file capability and NET_RAW is dropped here, so it uses an ICMP datagram socket,
+# which works when net.ipv4.ping_group_range in the network namespace covers the user.
+ping -V
+cat /proc/sys/net/ipv4/ping_group_range
+ping -c 1 -W 5 127.0.0.1
 command -v ghidra
+# Every Ghidra help module has a search index, so the help window opens.
+java -Djava.awt.headless=true -cp /usr/share/ghidra/Ghidra/Framework/Help/lib/javahelp-*.jar /usr/local/lib/ghidra-help-index/GhidraHelpIndex.java --check /usr/share/ghidra
 r2 -v
 yara --version
 python3 -c "import pefile"
@@ -100,6 +112,10 @@ PWNLIB_NOTERM=1 python3 -c "import pwn"' ;;
 esac
 
 echo "smoke-empty-home: $NAME ($REF) with an empty /home/coder"
+# Layer sizes (uncompressed), oldest first, so a review can see what a change costs every node
+# that pulls the image. The build-arg prefix BuildKit records on each RUN is dropped.
+docker history --no-trunc --format '{{.Size}}\t{{.CreatedBy}}' "$REF" | tac |
+    sed -E 's/\tRUN \|[0-9]+ ([A-Za-z_]+=[^ ]* )*/\tRUN /' | cut -c1-120 || true
 docker run --rm \
     --tmpfs /home/coder:uid=1000,gid=1000,mode=0755 \
     --cap-drop NET_RAW --cap-drop MKNOD \

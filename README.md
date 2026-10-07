@@ -41,7 +41,8 @@ from the image, so anything an image installs or configures there is hidden. Too
   tmpfs at `/home/coder` and checks the user, sudo and every tool. The build action runs it on
   the amd64 image before anything is pushed, and a release runs it on the image it just
   published, pulled fresh. It uses a tmpfs because Docker seeds an empty named volume from the
-  image, which would hide exactly this bug.
+  image, which would hide exactly this bug. It also prints the image's layer sizes, since every
+  node that runs a workspace pulls each changed layer.
 
 ## How it works
 

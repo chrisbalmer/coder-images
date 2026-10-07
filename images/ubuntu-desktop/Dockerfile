@@ -36,10 +36,19 @@ RUN install -d -m 0755 /etc/apt/keyrings && \
 # Xfce only: the template starts Xfce, and Unity needs 3D compositing a VNC session doesn't have.
 # No `apt upgrade`: this image inherits a patched base, and upgrading again would make the
 # layer depend on the mirror's state at build time instead of on this commit.
+#
+# No screen locker. The coder user has no password, on purpose (access is gated by the Coder
+# session), so a lock screen locks the user out of their own desktop. xfce4-session only
+# recommends one (light-locker first), so an apt pin keeps every locker out, now and in any later
+# install; no setting in a persistent home can turn a missing locker back on. KasmVNC needs
+# nothing else: its X server ignores screen blanking and DPMS, and its idle timeouts default to
+# never.
 RUN case "${TARGETARCH:-amd64}" in \
       amd64|arm64) ;; \
       *) echo "unsupported TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
     esac && \
+    printf 'Package: xfce4-screensaver light-locker xscreensaver mate-screensaver gnome-screensaver\nPin: version *\nPin-Priority: -1\n' \
+      > /etc/apt/preferences.d/no-screen-locker && \
     deb="kasmvncserver_${KASMVNC_DIST}_${KASMVNC_VERSION}_${TARGETARCH:-amd64}.deb" && \
     cd /tmp && \
     curl -fsSLO "https://github.com/kasmtech/KasmVNC/releases/download/v${KASMVNC_VERSION}/${deb}" && \
