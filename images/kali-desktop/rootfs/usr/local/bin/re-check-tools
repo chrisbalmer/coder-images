@@ -100,9 +100,12 @@ if $quick; then
     echo "== Skipped (--quick): analyzeHeadless, ghidra-mcp"
 else
     echo "== Ghidra"
+    # The project directory must exist. On failure, the log's tail is the output shown.
     check "analyzeHeadless imports and analyzes /bin/true" sh -c '
-analyzeHeadless "$1/ghidra" check -import /bin/true -deleteProject 2>&1 | tee "$1/headless.log" >/dev/null
-grep -q "Import succeeded" "$1/headless.log" && ! grep -q "ERROR REPORT" "$1/headless.log"' _ "$tmp"
+mkdir -p "$1/ghidra" &&
+analyzeHeadless "$1/ghidra" check -import /bin/true -deleteProject >"$1/headless.log" 2>&1
+grep -q "Import succeeded" "$1/headless.log" && ! grep -q "ERROR REPORT" "$1/headless.log" ||
+{ tail -n 15 "$1/headless.log"; exit 1; }' _ "$tmp"
 
     # Start a server on a throwaway project and talk MCP to it: initialize, then list tools. Then
     # start a second one on the same project while the first still has its client, as a new
@@ -110,7 +113,17 @@ grep -q "Import succeeded" "$1/headless.log" && ! grep -q "ERROR REPORT" "$1/hea
     check "ghidra-mcp answers, and a second start takes over the project" \
         env GHIDRA_MCP_PROJECT_DIR="$tmp/mcp" GHIDRA_MCP_PROJECT_NAME=check \
         /usr/bin/python3 - <<'PY'
-import json, selectors, subprocess, sys, time
+import json, os, selectors, subprocess, sys, time
+
+def fail(why):
+    # The server's own log says why; show its end, since the home may not outlive this run.
+    log = os.path.expanduser("~/.cache/ghidra-mcp/latest.log")
+    try:
+        with open(log, errors="replace") as f:
+            print("".join(f.readlines()[-25:]))
+    except OSError:
+        pass
+    sys.exit(why)
 
 class Server:
     def __init__(self):
@@ -131,11 +144,11 @@ class Server:
                 break
             line = self.proc.stdout.readline()
             if not line:
-                sys.exit(f"server exited (status {self.proc.poll()}); see ~/.cache/ghidra-mcp/latest.log")
+                fail(f"server exited (status {self.proc.poll()}); see ~/.cache/ghidra-mcp/latest.log")
             msg = json.loads(line)
             if msg.get("id") == want_id:
                 return msg
-        sys.exit(f"no reply to request {want_id} in {timeout}s; see ~/.cache/ghidra-mcp/latest.log")
+        fail(f"no reply to request {want_id} in {timeout}s; see ~/.cache/ghidra-mcp/latest.log")
 
     def handshake(self):
         self.send({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {
@@ -171,7 +184,7 @@ try:
     try:
         first.proc.wait(5)
     except subprocess.TimeoutExpired:
-        sys.exit("the first server was still running after the second one started")
+        fail("the first server was still running after the second one started")
     print("second start took over; the first server exited with status", first.proc.returncode)
 finally:
     for server in (second, first):

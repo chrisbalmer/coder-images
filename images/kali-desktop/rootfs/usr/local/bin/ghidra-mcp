@@ -49,19 +49,22 @@ if ! flock -w 120 9; then
 fi
 
 # Servers on this project: pyghidra-mcp processes of this user whose arguments name this project
-# directory and project name.
+# directory and project name. Always succeeds (set -e): a process that doesn't match, or that
+# exits while it's being read, just isn't listed.
 servers() {
     local pid
     for pid in $(pgrep -u "$(id -u)" -f pyghidra-mcp || true); do
         [ "$pid" != "$$" ] || continue
-        tr '\0' '\n' <"/proc/$pid/cmdline" 2>/dev/null |
+        if tr '\0' '\n' <"/proc/$pid/cmdline" 2>/dev/null |
             awk -v dir="$project_dir" -v name="$project_name" '
                 prev == "--project-path" && $0 == dir { d = 1 }
                 prev == "--project-name" && $0 == name { n = 1 }
                 { prev = $0 }
-                END { exit !(d && n) }' &&
+                END { exit !(d && n) }'; then
             echo "$pid"
+        fi
     done
+    return 0
 }
 
 old=$(servers)
