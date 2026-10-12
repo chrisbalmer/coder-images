@@ -1,2 +1,6 @@
 2bcdb96dd5093ffa6def626db701de8c28564418c1676bc1f13b2f99119b8c26  kasmvncserver_kali-rolling_1.5.0_amd64.deb
 4a5267cc5abd29955ace5e933f0602a741a4ef96bb28f16501aa3b1665bea50e  kasmvncserver_kali-rolling_1.5.0_arm64.deb
+89eadd7c76fc063887959510d5ba0ab1264dfd5f1143b925ddb73021a40acf16  uv-x86_64-unknown-linux-gnu.tar.gz
+afb6291f3f0a6b4521fc67b947822506c41dde5b60d2189dd8f3695b2ac8c9e7  uv-aarch64-unknown-linux-gnu.tar.gz
+137268c8ad939c064ff1ee2a6fdf0899d8725377114ea012fbd1ad5fa2550418  dotnet-sdk-10.0.401-linux-x64.tar.gz
+91d3d67f2ed065909bd2e1ba50a37192aff6df15178304939d5b55634d72da6a  dotnet-sdk-10.0.401-linux-arm64.tar.gz

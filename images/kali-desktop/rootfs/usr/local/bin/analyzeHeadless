@@ -1,0 +1,4 @@
+#!/bin/sh
+# Ghidra's headless analyzer, on the PATH. A wrapper rather than a symlink, so the script finds
+# its support files however it resolves its own path.
+exec "${GHIDRA_INSTALL_DIR:-/usr/share/ghidra}/support/analyzeHeadless" "$@"

@@ -105,7 +105,10 @@ java -Djava.awt.headless=true -cp /usr/share/ghidra/Ghidra/Framework/Help/lib/ja
 r2 -v
 yara --version
 python3 -c "import pefile"
-PWNLIB_NOTERM=1 python3 -c "import pwn"' ;;
+PWNLIB_NOTERM=1 python3 -c "import pwn"
+# The reverse-engineering extras, checked by the script the image ships for users: tools on the
+# PATH, the environment a fresh zsh gets, the Python venv, analyzeHeadless, ghidra-mcp, ilspycmd.
+re-check-tools' ;;
     *)
         echo "smoke-empty-home: no checks for $NAME" >&2
         exit 1 ;;

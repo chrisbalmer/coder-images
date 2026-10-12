@@ -17,7 +17,7 @@ built for amd64 and arm64.
 | `cortex` | `base` | Palo Alto Cortex (XSOAR/XSIAM) development |
 | `ubuntu-desktop` | `base` | Xfce desktop with KasmVNC and Firefox (KasmVNC's Ubuntu 24.04 build until it ships one for 26.04) |
 | `podman` | Fedora | Podman container runtime |
-| `kali-desktop` | Kali | Xfce desktop with KasmVNC, plus a security-lab toolset: reverse engineering, forensics, crypto/stego, web, exploitation, passwords, Ghidra, YARA, pefile, pwntools |
+| `kali-desktop` | Kali | Xfce desktop with KasmVNC, plus a security-lab toolset: reverse engineering, forensics, crypto/stego, web, exploitation, passwords, Ghidra, YARA, pefile, pwntools. Also runs headless: a binary-analysis venv (angr, z3, pyghidra), `ghidra-mcp` (Ghidra as an MCP server over stdio), GEF, .NET with ilspycmd, pycdc, ltrace/strace, bpftool and llvm. `re-check-tools` checks it all |
 | `terraform` | `base` | **Deprecated**, replaced by `infra`. No new tags are published; existing tags stay published for workspaces that still use them |
 
 Every image ends as the `coder` user (uid/gid 1000). `golang`, `app`, `infra` and `cortex` run

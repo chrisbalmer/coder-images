@@ -116,6 +116,124 @@ RUN useradd coder \
     usermod -aG ssl-cert coder && \
     echo "coder ALL=(ALL) NOPASSWD:ALL" >>/etc/sudoers.d/nopasswd
 
+# 9-14. Reverse-engineering extras, for the desktop and for headless use over SSH, where an MCP
+# client drives Ghidra (ghidra-mcp) and gdb. Nothing here goes under /home/coder: the venv is in
+# /opt/venvs/re, .NET in /usr/share/dotnet, its tools in /opt/dotnet-tools, and the shell setup
+# in /etc. These layers come after the user so the venv can belong to coder, as cortex's does.
+
+# 9. Tracing, eBPF, TLS netcat, GEF for gdb, keystone's Python bindings, and the compilers that
+# pycdc and JPype (pyghidra's Java bridge, which has no wheel for Kali's Python) build with.
+# .NET needs ICU, which libicu-dev pulls in at whatever version the distribution is on.
+RUN apt-get update && \
+    apt-get -y install \
+      ltrace strace gdb gef bpftool llvm ncat \
+      python3-venv python3-dev python3-keystone-engine \
+      build-essential cmake libicu-dev && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# 10. pycdc and pycdas, the Python bytecode decompiler and disassembler. Kali doesn't package
+# them and upstream doesn't tag releases, so the build pins a commit; fetching by hash makes the
+# commit its own checksum.
+ARG PYCDC_COMMIT=b4289760970dbc399684f1e155ec6d1ea1cc787e
+RUN git init -q /tmp/pycdc && \
+    git -C /tmp/pycdc fetch -q --depth 1 https://github.com/zrax/pycdc.git "${PYCDC_COMMIT}" && \
+    git -C /tmp/pycdc checkout -q FETCH_HEAD && \
+    cmake -S /tmp/pycdc -B /tmp/pycdc/build -DCMAKE_BUILD_TYPE=Release && \
+    cmake --build /tmp/pycdc/build -j"$(nproc)" && \
+    cmake --install /tmp/pycdc/build --prefix /usr/local && \
+    rm -rf /tmp/pycdc && \
+    pycdc --help 2>/dev/null && test -x /usr/local/bin/pycdas
+
+# 11. uv, the same release base ships. Each download must have a line in checksums.sha256.
+ARG UV_VERSION=0.12.18
+COPY images/kali-desktop/checksums.sha256 /tmp/checksums.sha256
+RUN case "${TARGETARCH:-amd64}" in \
+      amd64) UV_ARCH=x86_64 ;; \
+      arm64) UV_ARCH=aarch64 ;; \
+    esac && \
+    f="uv-${UV_ARCH}-unknown-linux-gnu.tar.gz" && \
+    curl -fsSL -o "/tmp/${f}" "https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/${f}" && \
+    { grep -q "  ${f}\$" /tmp/checksums.sha256 || { echo "no checksum for ${f}" >&2; exit 1; }; } && \
+    (cd /tmp && sha256sum --ignore-missing --check /tmp/checksums.sha256) && \
+    tar -xzf "/tmp/${f}" -C /tmp && \
+    install -m 0755 "/tmp/uv-${UV_ARCH}-unknown-linux-gnu/uv" "/tmp/uv-${UV_ARCH}-unknown-linux-gnu/uvx" /usr/local/bin/ && \
+    rm -rf /tmp/uv-* && \
+    uv --version
+
+# 12. The .NET SDK (the current LTS) and ilspycmd, the ILSpy decompiler's command line. The SDK
+# goes in /usr/share/dotnet, where a .NET app looks by default, and the tool in a tool path
+# rather than a user's ~/.dotnet/tools. The first-run files and the NuGet cache go to /tmp and
+# are removed.
+ARG DOTNET_SDK_VERSION=10.0.401
+ARG ILSPYCMD_VERSION=11.1.0.9782
+ENV DOTNET_ROOT=/usr/share/dotnet \
+    DOTNET_CLI_TELEMETRY_OPTOUT=1 \
+    DOTNET_NOLOGO=1
+RUN case "${TARGETARCH:-amd64}" in \
+      amd64) RID=x64 ;; \
+      arm64) RID=arm64 ;; \
+    esac && \
+    f="dotnet-sdk-${DOTNET_SDK_VERSION}-linux-${RID}.tar.gz" && \
+    curl -fsSL -o "/tmp/${f}" "https://builds.dotnet.microsoft.com/dotnet/Sdk/${DOTNET_SDK_VERSION}/${f}" && \
+    { grep -q "  ${f}\$" /tmp/checksums.sha256 || { echo "no checksum for ${f}" >&2; exit 1; }; } && \
+    (cd /tmp && sha256sum --ignore-missing --check /tmp/checksums.sha256) && \
+    install -d /usr/share/dotnet && \
+    tar -xzf "/tmp/${f}" -C /usr/share/dotnet && \
+    rm -f "/tmp/${f}" /tmp/checksums.sha256 && \
+    ln -s /usr/share/dotnet/dotnet /usr/local/bin/dotnet && \
+    install -d /etc/dotnet && echo /usr/share/dotnet > /etc/dotnet/install_location && \
+    DOTNET_CLI_HOME=/tmp/dotnet-home NUGET_PACKAGES=/tmp/nuget \
+      dotnet tool install --tool-path /opt/dotnet-tools ilspycmd --version "${ILSPYCMD_VERSION}" && \
+    rm -rf /tmp/dotnet-home /tmp/nuget /tmp/NuGetScratch* && \
+    DOTNET_CLI_HOME=/tmp/dotnet-home /opt/dotnet-tools/ilspycmd --version && \
+    rm -rf /tmp/dotnet-home
+
+# 13. The Python environment for binary analysis: angr, z3, pyghidra, pyghidra-mcp and
+# pyinstxtractor-ng, pinned in src/kali-desktop/requirements.txt. It sees the system site
+# packages, so Kali's pwntools, capstone, unicorn and keystone stay importable and angr reuses
+# the capstone it pins when Kali's matches. It belongs to coder, so `uv pip install` into it works
+# without sudo (until the next restart: the root filesystem doesn't persist).
+COPY src/kali-desktop/requirements.txt /tmp/re-requirements.txt
+RUN install -d -o coder -g coder /opt/venvs/re
+USER coder
+# No uv cache: as coder it would land under /home/coder, which a workspace's home volume hides.
+RUN export UV_NO_CACHE=1 UV_PYTHON_DOWNLOADS=never && \
+    uv venv --seed --system-site-packages --python /usr/bin/python3 /opt/venvs/re && \
+    uv pip install --python /opt/venvs/re/bin/python -r /tmp/re-requirements.txt && \
+    PWNLIB_NOTERM=1 /opt/venvs/re/bin/python -c \
+      "import angr, z3, pyghidra, pwn, unicorn, keystone, capstone, pyinstxtractor_ng" && \
+    /opt/venvs/re/bin/pyghidra-mcp --version
+USER root
+RUN rm -f /tmp/re-requirements.txt
+
+# 14. Shell setup and helper scripts, last because they change most often:
+#   /etc/profile.d/re-tools.sh      PATH, GHIDRA_INSTALL_DIR, DOTNET_ROOT, and TERM when unset
+#   /etc/gdb/gdbinit.d/gef.gdb      loads GEF into every gdb (GEF_DISABLE=1 for plain gdb)
+#   /usr/local/bin/gef              Kali's `gef` command, minus the second load of GEF
+#   /usr/local/bin/analyzeHeadless  Ghidra's headless analyzer, on the PATH
+#   /usr/local/bin/ghidra-mcp       pyghidra-mcp over stdio, safe to start again
+#   /usr/local/bin/re-check-tools   checks the whole toolset from a user's shell
+# Debian's /etc/profile resets PATH in every login shell (Kali's zprofile reads it), so the ENV
+# below doesn't reach one alone; profile.d puts the paths back. zsh reads zshenv in every
+# session, login or not, including a command run over SSH, and interactive bash reads
+# bash.bashrc. The ENV covers processes no shell starts.
+COPY images/kali-desktop/rootfs/ /
+RUN printf '%s\n' '' \
+      '# Paths and settings for the reverse-engineering tools, in every zsh (coder-images).' \
+      'if [ -r /etc/profile.d/re-tools.sh ]; then emulate sh -c ". /etc/profile.d/re-tools.sh"; fi' \
+      >> /etc/zsh/zshenv && \
+    printf '%s\n' '' \
+      '# Paths and settings for the reverse-engineering tools (coder-images).' \
+      'if [ -r /etc/profile.d/re-tools.sh ]; then . /etc/profile.d/re-tools.sh; fi' \
+      >> /etc/bash.bashrc && \
+    chmod 0755 /usr/local/bin/gef /usr/local/bin/analyzeHeadless /usr/local/bin/ghidra-mcp \
+      /usr/local/bin/re-check-tools && \
+    chmod 0644 /etc/profile.d/re-tools.sh /etc/gdb/gdbinit.d/gef.gdb
+ENV GHIDRA_INSTALL_DIR=/usr/share/ghidra \
+    VIRTUAL_ENV=/opt/venvs/re \
+    PATH="/opt/venvs/re/bin:/opt/dotnet-tools:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
 USER coder
 
 # Provenance, last on purpose: an ARG is part of the cache key of every later RUN, and

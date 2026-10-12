@@ -1,0 +1,104 @@
+#!/usr/bin/env bash
+# ghidra-mcp: pyghidra-mcp (headless Ghidra) as an MCP server on stdio, for an MCP client on this
+# machine or on another one over SSH:
+#
+#   claude mcp add ghidra -- ssh <workspace>.coder ghidra-mcp
+#
+# Ghidra locks a project while it's open, so a second server on the same project can't open it.
+# A client that goes away without stopping its server (a dropped SSH session, a killed client)
+# leaves that server holding the lock, and the next one fails. So this stops any earlier server on
+# the same project before starting: the newest client wins. To run two servers at once, give one
+# its own project name.
+#
+# stdout carries the MCP protocol, so this script's messages and the server's log go to a file in
+# ~/.cache/ghidra-mcp (the newest is ~/.cache/ghidra-mcp/latest.log).
+#
+# Environment:
+#   GHIDRA_MCP_PROJECT_DIR   where Ghidra projects live (default ~/re/ghidra-projects)
+#   GHIDRA_MCP_PROJECT_NAME  the project to open (default re)
+#   GHIDRA_MCP_KEEP_LOGS     how many log files to keep (default 20)
+# Arguments go to pyghidra-mcp, e.g. binaries to import: ghidra-mcp ~/re/bins/sample
+# ~/re/bins is created as a place to keep them.
+
+set -euo pipefail
+
+PYGHIDRA_MCP=/opt/venvs/re/bin/pyghidra-mcp
+project_dir=${GHIDRA_MCP_PROJECT_DIR:-$HOME/re/ghidra-projects}
+project_name=${GHIDRA_MCP_PROJECT_NAME:-re}
+keep_logs=${GHIDRA_MCP_KEEP_LOGS:-20}
+state_dir=${XDG_CACHE_HOME:-$HOME/.cache}/ghidra-mcp
+
+mkdir -p "$project_dir" "$HOME/re/bins" "$state_dir"
+project_dir=$(cd "$project_dir" && pwd -P)
+
+log="$state_dir/$(date +%Y%m%dT%H%M%S)-$$.log"
+exec 2>>"$log"
+ln -sfn "$(basename "$log")" "$state_dir/latest.log"
+# Keep the newest logs only.
+find "$state_dir" -maxdepth 1 -name '*-*.log' -type f -printf '%T@ %p\n' |
+    sort -rn | tail -n +"$((keep_logs + 1))" | cut -d' ' -f2- | xargs -r rm -f --
+
+say() { printf '%s ghidra-mcp[%s]: %s\n' "$(date -Is)" "$$" "$*" >&2; }
+
+# Starts on one project take turns, so two clients starting at once don't stop each other's
+# server halfway through. The lock is released before the server starts.
+exec 9>"$state_dir/start.lock"
+if ! flock -w 120 9; then
+    say "another ghidra-mcp has been starting for 2 minutes; giving up"
+    exit 1
+fi
+
+# Servers on this project: pyghidra-mcp processes of this user whose arguments name this project
+# directory and project name. Always succeeds (set -e): a process that doesn't match, or that
+# exits while it's being read, just isn't listed.
+servers() {
+    local pid
+    for pid in $(pgrep -u "$(id -u)" -f pyghidra-mcp || true); do
+        [ "$pid" != "$$" ] || continue
+        if tr '\0' '\n' <"/proc/$pid/cmdline" 2>/dev/null |
+            awk -v dir="$project_dir" -v name="$project_name" '
+                prev == "--project-path" && $0 == dir { d = 1 }
+                prev == "--project-name" && $0 == name { n = 1 }
+                { prev = $0 }
+                END { exit !(d && n) }'; then
+            echo "$pid"
+        fi
+    done
+    return 0
+}
+
+old=$(servers)
+if [ -n "$old" ]; then
+    say "stopping earlier server(s) on $project_dir/$project_name: $(echo $old)"
+    kill -TERM $old 2>/dev/null || true
+    for _ in $(seq 1 30); do
+        [ -n "$(servers)" ] || break
+        sleep 0.5
+    done
+    left=$(servers)
+    if [ -n "$left" ]; then
+        say "still running after 15s, killing: $(echo $left)"
+        kill -KILL $left 2>/dev/null || true
+        sleep 1
+    fi
+fi
+
+# A server that was killed leaves Ghidra's lock files behind. With no server left on the project
+# nothing holds them, so they can go.
+if [ -z "$(servers)" ]; then
+    for f in "$project_dir/$project_name.lock" "$project_dir/$project_name.lock~"; do
+        if [ -e "$f" ]; then
+            say "removing stale lock $f"
+            rm -f -- "$f"
+        fi
+    done
+fi
+
+exec 9>&-
+
+export GHIDRA_INSTALL_DIR=${GHIDRA_INSTALL_DIR:-/usr/share/ghidra}
+# Relative paths pyghidra-mcp writes to (symbols, for one) land next to the project.
+cd "$project_dir"
+say "starting pyghidra-mcp on $project_dir/$project_name, Ghidra $GHIDRA_INSTALL_DIR"
+exec "$PYGHIDRA_MCP" --transport stdio \
+    --project-path "$project_dir" --project-name "$project_name" "$@"
