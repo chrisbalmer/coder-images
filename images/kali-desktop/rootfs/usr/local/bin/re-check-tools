@@ -1,0 +1,189 @@
+#!/usr/bin/env bash
+# re-check-tools: check that the reverse-engineering toolset works for the current user, the way
+# an SSH session or a desktop terminal sees it. Run it from the workspace, or from outside:
+#
+#   ssh <workspace>.coder re-check-tools
+#
+# It checks the tools on the PATH, the environment a fresh zsh gets (login and not), the Python
+# environment, Ghidra's headless analyzer, the Ghidra MCP server and ilspycmd. It writes only to
+# a temporary directory and, because Java and .NET keep settings there, to ~/.ghidra and ~/.dotnet.
+# The MCP check uses its own project, so a server already running on yours is left alone.
+#
+# Exit status: 0 when everything passed, 1 otherwise. --quick skips the slow checks
+# (analyzeHeadless and the MCP server, about a minute together).
+
+set -uo pipefail
+
+quick=false
+[ "${1:-}" = --quick ] && quick=true
+
+failures=0
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+
+pass() { printf 'ok    %s\n' "$1"; }
+fail() {
+    printf 'FAIL  %s\n' "$1"
+    failures=$((failures + 1))
+    if [ -s "$tmp/out" ]; then tail -n 15 "$tmp/out" | sed 's/^/      /'; fi
+}
+# check <description> <command...>: pass when the command exits 0; show its output's tail if not.
+check() {
+    local what=$1
+    shift
+    if "$@" >"$tmp/out" 2>&1; then pass "$what"; else fail "$what"; fi
+}
+
+echo "== Tools on the PATH"
+for tool in \
+    ltrace strace gdb gef bpftool llvm-objdump ncat pycdc pycdas uv uvx python3 \
+    dotnet ilspycmd analyzeHeadless ghidra ghidra-mcp pyghidra-mcp pyinstxtractor-ng \
+    r2 rizin upx binwalk jadx wine java pwn; do
+    check "$tool" command -v "$tool"
+done
+
+echo "== Environment in a fresh zsh"
+# A clean environment, as sshd gives a session: only what the shell's own startup files set.
+fresh_env() {
+    env -i HOME="$HOME" USER="$(id -un)" LOGNAME="$(id -un)" SHELL=/usr/bin/zsh \
+        PATH=/usr/local/bin:/usr/bin:/bin zsh "$@"
+}
+expect='
+test "$(command -v python3)" = /opt/venvs/re/bin/python3
+test "$(command -v ilspycmd)" = /opt/dotnet-tools/ilspycmd
+command -v analyzeHeadless uv dotnet pycdc ghidra-mcp
+case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) exit 1 ;; esac
+case ":$PATH:" in *":$HOME/.dotnet/tools:"*) ;; *) exit 1 ;; esac
+test "$GHIDRA_INSTALL_DIR" = /usr/share/ghidra
+test "$DOTNET_ROOT" = /usr/share/dotnet
+test "$TERM" = xterm-256color
+'
+check "zsh -c (a command over SSH)" fresh_env -c "set -e; $expect"
+# Debian's /etc/profile, which a login zsh reads, resets PATH.
+check "zsh -lc (a login shell)" fresh_env -lc "set -e; $expect"
+check "TERM is left alone when set" env TERM=screen zsh -c 'test "$TERM" = screen'
+
+echo "== Python environment (/opt/venvs/re)"
+check "python3 is the venv's" test "$(command -v python3)" = /opt/venvs/re/bin/python3
+check "imports: angr z3 pwn unicorn keystone capstone pyghidra" env PWNLIB_NOTERM=1 \
+    /opt/venvs/re/bin/python -c 'import angr, z3, pwn, unicorn, keystone, capstone, pyghidra'
+check "keystone assembles, capstone disassembles" /opt/venvs/re/bin/python -c '
+import capstone, keystone
+code, _ = keystone.Ks(keystone.KS_ARCH_X86, keystone.KS_MODE_64).asm("xor eax, eax; ret")
+insns = [i.mnemonic for i in capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_64).disasm(bytes(code), 0)]
+assert insns == ["xor", "ret"], insns'
+check "z3 solves" /opt/venvs/re/bin/python -c '
+import z3
+x = z3.BitVec("x", 32)
+s = z3.Solver(); s.add(x * 3 == 21)
+assert s.check() == z3.sat and s.model()[x].as_long() == 7'
+
+echo "== Debuggers and decompilers"
+check "gdb loads GEF" gdb -q -batch -ex 'gef help'
+check "GEF_DISABLE=1 gives plain gdb" sh -c '! GEF_DISABLE=1 gdb -q -batch -ex "gef help"'
+check "ilspycmd --version" ilspycmd --version
+check "pycdc runs" pycdc --help
+# pycdc reads bytecode up to Python 3.13, older than Kali's python3, so it can only be tried on a
+# .pyc from an older interpreter, when there is one. (A PyInstaller bundle carries its own Python.)
+older_py=$(command -v python3.13 python3.12 python3.11 2>/dev/null | head -n 1)
+if [ -n "$older_py" ]; then
+    check "pycdc decompiles a $(basename "$older_py") .pyc" sh -c '
+cd "$1" && printf "def f(x):\n    return x + 1\n" >m.py &&
+"$2" -m py_compile m.py && pycdc __pycache__/m.*.pyc | grep -q "def f" &&
+pycdas __pycache__/m.*.pyc | grep -q "Object Name: f"' _ "$tmp" "$older_py"
+else
+    echo "skip  pycdc decompile: no Python 3.13 or older here to compile a test .pyc"
+fi
+check "llvm-objdump reads eBPF" sh -c 'llvm-objdump --version | grep -qi bpf'
+
+if $quick; then
+    echo "== Skipped (--quick): analyzeHeadless, ghidra-mcp"
+else
+    echo "== Ghidra"
+    check "analyzeHeadless imports and analyzes /bin/true" sh -c '
+analyzeHeadless "$1/ghidra" check -import /bin/true -deleteProject 2>&1 | tee "$1/headless.log" >/dev/null
+grep -q "Import succeeded" "$1/headless.log" && ! grep -q "ERROR REPORT" "$1/headless.log"' _ "$tmp"
+
+    # Start a server on a throwaway project and talk MCP to it: initialize, then list tools. Then
+    # start a second one on the same project while the first still has its client, as a new
+    # session does after an old one dropped: the first must be stopped and the second must answer.
+    check "ghidra-mcp answers, and a second start takes over the project" \
+        env GHIDRA_MCP_PROJECT_DIR="$tmp/mcp" GHIDRA_MCP_PROJECT_NAME=check \
+        /usr/bin/python3 - <<'PY'
+import json, selectors, subprocess, sys, time
+
+class Server:
+    def __init__(self):
+        # Unbuffered, so a line select() saw isn't left in a buffer select() can't see.
+        self.proc = subprocess.Popen(["ghidra-mcp"], stdin=subprocess.PIPE,
+                                     stdout=subprocess.PIPE, bufsize=0)
+        self.sel = selectors.DefaultSelector()
+        self.sel.register(self.proc.stdout, selectors.EVENT_READ)
+
+    def send(self, msg):
+        self.proc.stdin.write((json.dumps(msg) + "\n").encode())
+        self.proc.stdin.flush()
+
+    def reply(self, want_id, timeout):
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if not self.sel.select(deadline - time.monotonic()):
+                break
+            line = self.proc.stdout.readline()
+            if not line:
+                sys.exit(f"server exited (status {self.proc.poll()}); see ~/.cache/ghidra-mcp/latest.log")
+            msg = json.loads(line)
+            if msg.get("id") == want_id:
+                return msg
+        sys.exit(f"no reply to request {want_id} in {timeout}s; see ~/.cache/ghidra-mcp/latest.log")
+
+    def handshake(self):
+        self.send({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {
+            "protocolVersion": "2025-06-18", "capabilities": {},
+            "clientInfo": {"name": "re-check-tools", "version": "1"}}})
+        info = self.reply(1, 180)["result"]["serverInfo"]
+        self.send({"jsonrpc": "2.0", "method": "notifications/initialized"})
+        self.send({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
+        tools = sorted(t["name"] for t in self.reply(2, 60)["result"]["tools"])
+        assert tools, "no tools"
+        return info, tools
+
+    def close(self):
+        try:
+            self.proc.stdin.close()
+        except OSError:
+            pass
+        try:
+            self.proc.wait(20)
+        except subprocess.TimeoutExpired:
+            self.proc.kill()
+            self.proc.wait()
+
+first = second = None
+try:
+    first = Server()
+    info, tools = first.handshake()
+    print("server:", info)
+    print(len(tools), "tools:", ", ".join(tools))
+
+    second = Server()
+    second.handshake()
+    try:
+        first.proc.wait(5)
+    except subprocess.TimeoutExpired:
+        sys.exit("the first server was still running after the second one started")
+    print("second start took over; the first server exited with status", first.proc.returncode)
+finally:
+    for server in (second, first):
+        if server:
+            server.close()
+PY
+fi
+
+echo
+if [ "$failures" -eq 0 ]; then
+    echo "re-check-tools: all checks passed"
+else
+    echo "re-check-tools: $failures check(s) failed"
+    exit 1
+fi

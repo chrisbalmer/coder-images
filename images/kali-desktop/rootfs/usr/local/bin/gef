@@ -1,0 +1,5 @@
+#!/bin/sh
+# Kali's /usr/bin/gef runs `gdb -ex "source /usr/share/gdb/gef.py"`, but gdb already loads GEF
+# from /etc/gdb/gdbinit.d/gef.gdb, and GEF loaded twice registers everything twice. This one
+# comes first on the PATH and just runs gdb, with GEF on even if GEF_DISABLE is set.
+GEF_DISABLE= exec gdb "$@"

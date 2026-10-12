@@ -1,0 +1,7 @@
+# The binary-analysis venv, /opt/venvs/re. It sees the system site packages, so Kali's pwntools,
+# capstone, unicorn and keystone (python3-keystone-engine) come from apt, not from here.
+angr==10.0.3
+z3-solver==5.1.0.0
+pyghidra==3.1.0
+pyghidra-mcp==0.2.7
+pyinstxtractor-ng==2026.7.3
